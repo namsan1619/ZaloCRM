@@ -72,7 +72,16 @@ model Organization {
   stageTransitionRules        StageTransitionRule[]
   stuckThresholds             StuckThreshold[]
   nbaTemplates                NbaTemplate[]
-  // Phase 6+ — Inbox Triage Filter relations
+  // ── CRM SĐT KH + Nguồn hàng (2026-11-15) ──────────────────────────────────
+  masterDataCategories    MasterDataCategory[]
+  masterData              MasterData[]
+  contactCodeSequences    ContactCodeSequence[]
+  contactImportJobs       ContactImportJob[]
+  agencies                Agency[]
+  projects                Project[]
+  properties              Property[]
+  propertyMedia           PropertyMedia[]
+  campaigns               Campaign[]
   accountFolders              AccountFolder[]
   savedFilterPresets          SavedFilterPreset[]
   // Phase 7 — Automation framework (Block / Sequence / Trigger / Broadcast / Campaign / Task)
@@ -540,6 +549,14 @@ model Contact {
   firstContactDate DateTime? @map("first_contact_date")
   status           String?   @default("new") // LEGACY: new/contacted/interested/converted/lost — giữ 1 release, sau drop. Field mới: statusId FK -> Status table
   statusId         String?   @map("status_id")
+  // ── CRM SĐT KH + Nguồn hàng (2026-11-15) ──────────────────────────────────
+  // Mã KH kinh doanh duy nhất theo org (KH000001...) — sinh tự động từ ContactCodeSequence.
+  customerCode     String?   @map("customer_code")
+  // Đánh giá tay: mức A/B/C/D (code trong MasterData category TRANG_THAI_KH) + ghi chú + ai/ khi nào.
+  ratingCode       String?   @map("rating_code")
+  ratingNote       String?   @map("rating_note")
+  ratedById        String?   @map("rated_by_id")
+  ratedAt          DateTime? @map("rated_at")
   // ── Parent-Child (KH cha gom nhiều KH con — cross-Zalo-identity human-level link) ───
   // Khác mergedInto (hard-merge same Zalo identity, secondary hidden): parentContactId
   // soft-link, child visible, aggregate status/score/hasZalo từ children. Canonical son
@@ -633,6 +650,8 @@ model Contact {
   // bảng này thay vì chỉ assignedUserId.
   contactAccess     ContactAccess[]
   contactNotes      Note[]
+  // CRM SĐT KH — dòng import đã tạo/trùng với KH này
+  importRows        ContactImportRow[]
   // Phase 7 — Automation framework
   // automationTasks   AutomationTask[]  ← REMOVED 2026-06-01 Luồng Mục Tiêu M0
   // Phase Lead Pool 2026-05-24
@@ -705,6 +724,9 @@ model Contact {
   @@unique([orgId, zaloGlobalId])
   @@index([orgId, phone])
   @@index([orgId, phoneNormalized])
+  // Mã KH: unique theo org. NULL được phép (KH tạo tay chưa cấp mã) — Postgres cho nhiều NULL trong unique index.
+  @@unique([orgId, customerCode])
+  @@index([orgId, ratingCode])
   @@index([orgId, zaloUid])
   // Default sort cho ContactsView list: tương tác mới nhất lên đầu.
   // Cần index để tránh seq scan khi 4500+ contacts.
@@ -4047,4 +4069,291 @@ model MediaUsageEvent {
   @@index([mediaAssetId])
   @@index([orgId, createdAt])
   @@map("media_usage_events")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// CRM SĐT KH + Nguồn hàng (2026-11-15) — Phase P1–P4
+// Danh mục dùng chung (P1) · Import KH + mã KH (P2) · Bảng hàng (P3) · Chiến dịch (P4)
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── P1: MasterData / Tùy chọn tự thêm-sửa ──────────────────────────────────
+model MasterDataCategory {
+  id        String   @id @default(uuid()) @map("id")
+  orgId     String   @map("org_id")
+  key       String   @map("key") // NGUON_KH, LOAI_CAN, HUONG, VIEW, BAN_GIAO, NOI_THAT, DAI_LY, TRANG_THAI_CAN, TRANG_THAI_KH...
+  label     String   @map("label")
+  icon      String?  @map("icon")
+  sortOrder Int      @default(0) @map("sort_order")
+  isSystem  Boolean  @default(false) @map("is_system")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  items MasterData[]
+
+  @@unique([orgId, key])
+  @@index([orgId, sortOrder])
+  @@map("master_data_categories")
+}
+
+model MasterData {
+  id         String   @id @default(uuid()) @map("id")
+  orgId      String   @map("org_id")
+  categoryId String   @map("category_id")
+  code       String   @map("code") // mã ổn định: facebook, caoCaoCap...
+  label      String   @map("label") // nhãn hiển thị tiếng Việt
+  parentCode String?  @map("parent_code")
+  sortOrder  Int      @default(0) @map("sort_order")
+  color      String?  @map("color")
+  isActive   Boolean  @default(true) @map("is_active")
+  // Mở rộng: metadata JSON (vd giá trị phụ, alias import). Chỉ đọc ở UI khi cần.
+  metadata   Json?    @map("metadata")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  org      Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  category MasterDataCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, code])
+  @@index([orgId, categoryId, sortOrder])
+  @@map("master_data")
+}
+
+// ── P2: Mã KH + Import hàng loạt ───────────────────────────────────────────
+model ContactCodeSequence {
+  id        String   @id @default(uuid()) @map("id")
+  orgId     String   @unique @map("org_id")
+  lastValue Int      @default(0) @map("last_value")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("contact_code_sequences")
+}
+
+model ContactImportJob {
+  id            String    @id @default(uuid()) @map("id")
+  orgId         String    @map("org_id")
+  fileName      String    @map("file_name")
+  status        String    @default("pending") @map("status") // pending|running|done|failed|cancelled
+  totalRows     Int       @default(0) @map("total_rows")
+  processedRows Int       @default(0) @map("processed_rows")
+  createdRows   Int       @default(0) @map("created_rows")
+  duplicateRows Int       @default(0) @map("duplicate_rows")
+  invalidRows   Int       @default(0) @map("invalid_rows")
+  errorRows     Int       @default(0) @map("error_rows")
+  errorFile     String?   @map("error_file") // tên file lỗi (CSV) trong UPLOAD_DIR
+  options       Json?     @map("options") // map cột, masterData mapping, default source...
+  createdById   String?   @map("created_by_id")
+  startedAt     DateTime? @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  importRows ContactImportRow[]
+
+  @@index([orgId, status])
+  @@index([orgId, createdAt])
+  @@map("contact_import_jobs")
+}
+
+model ContactImportRow {
+  id              String   @id @default(uuid()) @map("id")
+  jobId           String   @map("job_id")
+  rowIndex        Int      @map("row_index") // số dòng trong file gốc (1-based)
+  phoneRaw        String?  @map("phone_raw")
+  phoneNormalized String?  @map("phone_normalized")
+  nameRaw         String?  @map("name_raw")
+  payload         Json     @default("{}") @map("payload") // các cột khác (địa chỉ, ghi chú, field tùy biến)
+  status          String   @default("pending") @map("status") // pending|created|duplicate|invalid
+  errorReason     String?  @map("error_reason")
+  contactId       String?  @map("contact_id") // Contact đã tạo / trùng
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  job     ContactImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  contact Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([jobId, status])
+  @@index([jobId, phoneNormalized])
+  @@map("contact_import_rows")
+}
+
+// ── P3: Nguồn hàng — Đại lý / Dự án / Căn ──────────────────────────────────
+model Agency {
+  id          String   @id @default(uuid()) @map("id")
+  orgId       String   @map("org_id")
+  code        String   @map("code") // mã đại lý (từ bảng hàng import)
+  name        String   @map("name")
+  phone       String?  @map("phone")
+  contactName String?  @map("contact_name")
+  note        String?  @map("note")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  properties Property[]
+
+  @@unique([orgId, code])
+  @@map("agencies")
+}
+
+model Project {
+  id           String   @id @default(uuid()) @map("id")
+  orgId        String   @map("org_id")
+  name         String   @map("name")
+  developer    String?  @map("developer") // chủ đầu tư
+  province     String?  @map("province")
+  district     String?  @map("district")
+  address      String?  @map("address")
+  handoverYear Int?     @map("handover_year")
+  note         String?  @map("note")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  properties Property[]
+
+  @@unique([orgId, name])
+  @@map("projects")
+}
+
+model Property {
+  id                   String   @id @default(uuid()) @map("id")
+  orgId                String   @map("org_id")
+  projectId            String   @map("project_id")
+  agencyId             String?  @map("agency_id")
+  unitCode             String   @map("unit_code") // mã căn (bảng hàng đại lý)
+  zoneName             String?  @map("zone_name") // phân khu
+  blockName            String?  @map("block_name") // tòa
+  propertyTypeCode     String?  @map("property_type_code") // MasterData LOAI_CAN
+  category             String?  @map("category") // HIGH_RISE | LOW_RISE | LAND
+  transactionType      String?  @default("SALE") @map("transaction_type") // SALE | RENT
+  statusCode           String   @default("AVAILABLE") @map("status_code") // MasterData TRANG_THAI_CAN
+  statusNote           String?  @map("status_note")
+  floorNo              Int?     @map("floor_no")
+  totalFloors          Int?     @map("total_floors")
+  bedrooms             Int?     @map("bedrooms")
+  bathrooms            Int?     @map("bathrooms")
+
+  // ── Giá ───────────────────────────────────────────────
+  priceVnd             BigInt?  @map("price_vnd")
+  priceRentVnd         BigInt?  @map("price_rent_vnd")
+  priceBasisCode       String?  @default("TOTAL") @map("price_basis_code") // TOTAL | PER_M2
+  priceNote            String?  @map("price_note")
+  priceTtsVnd          BigInt?  @map("price_tts_vnd") // giá theo TTS
+  priceHtlsVnd         BigInt?  @map("price_htls_vnd") // giá theo HTLS
+  unitPriceTtsVnd      BigInt?  @map("unit_price_tts_vnd") // đơn giá TTS/m2
+  specialMechanismCode String?  @map("special_mechanism_code") // MasterData co che dac biet
+
+  // ── Diện tích / hướng / view ─────────────────────────
+  usableAreaM2         Float?   @map("usable_area_m2")
+  timTuongAreaM2       Float?   @map("tim_tuong_area_m2")
+  landAreaM2           Float?   @map("land_area_m2")
+  constructionAreaM2   Float?   @map("construction_area_m2")
+  frontageM            Float?   @map("frontage_m")
+  depthM               Float?   @map("depth_m")
+  roadWidthM           Float?   @map("road_width_m")
+  balconyDirectionCode String?  @map("balcony_direction_code") // MasterData HUONG
+  viewCode             String?  @map("view_code") // MasterData VIEW
+  directionCode        String?  @map("direction_code") // MasterData HUONG
+  landDirectionCode    String?  @map("land_direction_code")
+
+  // ── Pháp lý / bàn giao / nội thất ────────────────────
+  legalCode            String?  @map("legal_code") // MasterData PHAPLY
+  legalNote            String?  @map("legal_note")
+  handoverCode         String?  @map("handover_code") // MasterData BAN_GIAO
+  furnitureCode        String?  @map("furniture_code") // MasterData NOI_THAT
+  handoverYear         Int?     @map("handover_year")
+
+  // ── Nghiệp vụ ─────────────────────────────────────────
+  assignedUserId       String?  @map("assigned_user_id")
+  note                 String?  @map("note")
+  infoCheckedAt        DateTime? @map("info_checked_at")
+  attributes           Json     @default("{}") @map("attributes") // field mở rộng không cần schema
+  isActive             Boolean  @default(true) @map("is_active")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  org      Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  project  Project        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  agency   Agency?        @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  media    PropertyMedia[]
+
+  @@unique([orgId, projectId, unitCode])
+  @@index([orgId, projectId, statusCode])
+  @@index([orgId, statusCode])
+  @@index([orgId, agencyId])
+  @@index([orgId, priceVnd])
+  @@index([orgId, propertyTypeCode])
+  @@map("properties")
+}
+
+model PropertyMedia {
+  id         String   @id @default(uuid()) @map("id")
+  orgId      String   @map("org_id")
+  propertyId String   @map("property_id")
+  kind       String   @default("IMAGE") @map("kind") // IMAGE | VIDEO | DOCUMENT | FLOORPLAN
+  url        String   @map("url")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  property Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, sortOrder])
+  @@map("property_media")
+}
+
+// ── P4: Chiến dịch Marketing (tracker — không gửi thật) ────────────────────
+model Campaign {
+  id          String    @id @default(uuid()) @map("id")
+  orgId       String    @map("org_id")
+  name        String    @map("name") // user tự đặt tên
+  channelCode String?   @map("channel_code") // MasterData KEHOACH
+  typeCode    String?   @map("type_code") // marketing | care | friend_request | message
+  startAt     DateTime? @map("start_at")
+  endAt       DateTime? @map("end_at")
+  costVnd     BigInt?   @map("cost_vnd") // ngân sách dự kiến
+  status      String    @default("DRAFT") @map("status") // DRAFT | SCHEDULED | RUNNING | PAUSED | COMPLETED
+  script      String?   @map("script") // kịch bản / nội dung mẫu
+  note        String?   @map("note")
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  org           Organization           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  customerLists CampaignCustomerList[]
+  projects      CampaignProject[]
+
+  @@index([orgId, status])
+  @@index([orgId, startAt, endAt])
+  @@map("campaigns")
+}
+
+model CampaignCustomerList {
+  id             String   @id @default(uuid()) @map("id")
+  campaignId     String   @map("campaign_id")
+  customerListId String   @map("customer_list_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, customerListId])
+  @@map("campaign_customer_lists")
+}
+
+model CampaignProject {
+  id         String   @id @default(uuid()) @map("id")
+  campaignId String   @map("campaign_id")
+  projectId  String   @map("project_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, projectId])
+  @@map("campaign_projects")
 }
