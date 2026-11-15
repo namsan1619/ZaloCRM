@@ -1,0 +1,34 @@
+# Override dành riêng cho chạy LOCAL (không sửa file gốc của tác giả).
+# Dùng kèm với docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
+#
+# Lý do tồn tại: image minio/minio + minio/mc đã bị gỡ khỏi Docker Hub (2026) và
+# quay.io/minio/* trả 401 cho pull anonymous → không còn image MinIO công khai nào
+# pull được. Với STORAGE_DRIVER=local (mặc định của app, đã set trong .env) backend
+# không cần MinIO/S3 lúc chạy (chỉ dùng khi STORAGE_DRIVER=r2).
+#
+# Giải pháp: thay 2 service minio bằng stub alpine chạy "sleep" để GIỮ NGUYÊN cấu
+# trúc depends_on service_healthy của tác giả (app vẫn chờ minio "healthy" — stub
+# healthy ngay lập tức) mà không cần image MinIO. App không bao giờ kết nối tới stub.
+# Khi deploy production dùng S3/R2: bỏ override này và cấu hình ảnh MinIO hợp lệ.
+services:
+  minio:
+    image: alpine:3.20
+    entrypoint: ["/bin/sh", "-c", "echo '[local] minio skipped: image removed from Docker Hub/quay (2026); app chay STORAGE_DRIVER=local' && sleep infinity"]
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+
+  minio-init:
+    image: alpine:3.20
+    entrypoint: ["/bin/sh", "-c", "echo '[local] minio-init skipped (bucket tao khi dung S3/R2)'"]
+
+  # Máy này còn volume `zalocrm_pg_data` CŨ (2026-07-23, từ bản cài trước đã xoá
+  # thư mục, schema tạo bằng prisma db push — không có _prisma_migrations nên
+  # migrate deploy báo P3005 và mật khẩu cũ đã mất). Không xoá volume cũ để giữ
+  # dữ liệu; bản local dùng volume MỚI → DB sạch, migrate 108 migration đủ.
+  db:
+    volumes:
+      - zalocrm_pg_data_local:/var/lib/postgresql/data
+
+volumes:
+  zalocrm_pg_data_local:
