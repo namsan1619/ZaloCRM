@@ -57,6 +57,8 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         sort = '',            // 'score' = lead score cao lên đầu; mặc định = lastActivity desc
         sequenceAttachMin = '', // #4: lọc KH đã gắn ≥ N sequence (đếm CareSession, auto+manual)
         friendInviteMin = '',   // #3: lọc KH đã được gửi kết bạn ≥ N lần
+        customerCode = '',     // CRM SĐT KH (2026-11-15): lọc theo mã KH (chính xác hoặc chứa)
+        ratingCode = '',       // CRM SĐT KH (2026-11-15): lọc theo mức đánh giá tay (MasterData TRANG_THAI_KH)
       } = request.query as QueryParams;
 
       const where: any = { orgId: user.orgId, mergedInto: null };
@@ -71,6 +73,9 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       if (status) where.status = status;
       if (statusId) where.statusId = statusId;
       if (assignedUserId) where.assignedUserId = assignedUserId;
+      // CRM SĐT KH (2026-11-15): lọc theo mã KH + mức đánh giá tay
+      if (customerCode) where.customerCode = { contains: customerCode, mode: 'insensitive' };
+      if (ratingCode) where.ratingCode = ratingCode;
       // 2026-06-03 fix (office-hours review): filter Zalo phải KHỚP logic hiển thị
       // zaloDisplay() ở frontend — "Có Zalo" = có Friend row HOẶC zalo identity HOẶC
       // hasZalo=true (không chỉ hasZalo raw). Trước đây filter dùng hasZalo raw nên
@@ -273,6 +278,9 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
             ...display,
             // Phase Contact Scope Hybrid: badge UI render — "Phụ trách chính" vs "Đồng đội cùng chăm"
             viewerRole: cScope.isOrgAdmin ? 'admin' : (isPrimary ? 'primary' : 'collaborator'),
+            // CRM SĐT KH (P2): mã KH kinh doanh + đánh giá tay — expose tường minh
+            customerCode: c.customerCode ?? null,
+            ratingCode: c.ratingCode ?? null,
             // #4: số lần gắn sequence (auto+manual) ở mức Cha (SĐT) — tổng + đang chạy.
             sequenceAttachCount: seqCountMap.get(c.id)?.total ?? 0,
             sequenceActiveCount: seqCountMap.get(c.id)?.active ?? 0,
@@ -513,7 +521,15 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       const { buildPrivacyContext, shouldRedactContactPii, redactContact } = await import('../privacy/redact.js');
       const privacyCtx = await buildPrivacyContext(request);
       const shouldRedact = await shouldRedactContactPii(contact.id, privacyCtx);
-      const merged = { ...contact, ...(preview ?? {}), ...display, viewerRole };
+      const merged = {
+        ...contact,
+        ...(preview ?? {}),
+        ...display,
+        viewerRole,
+        // CRM SĐT KH (P2): mã KH kinh doanh + đánh giá tay — expose tường minh
+        customerCode: contact.customerCode ?? null,
+        ratingCode: contact.ratingCode ?? null,
+      };
       return shouldRedact ? redactContact(merged as any, privacyCtx) : merged;
     } catch (err) {
       logger.error('[contacts] Detail error:', err);

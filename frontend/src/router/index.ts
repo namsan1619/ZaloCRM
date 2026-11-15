@@ -63,6 +63,38 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/MediaView.vue'),
     meta: { requiresAuth: true, resource: 'media' },
   },
+  // ════════ Bảng hàng — Nguồn hàng / Đại lý / Dự án (2026-11-15) ════════
+  // Views do agent FE-B tạo; route khai ở đây để menu + RBAC gắn resource 'property'.
+  {
+    path: '/properties',
+    name: 'Properties',
+    component: () => import('@/views/properties/PropertyListView.vue'),
+    meta: { requiresAuth: true, resource: 'property' },
+  },
+  {
+    path: '/properties/compare',
+    name: 'PropertyCompare',
+    component: () => import('@/views/properties/PropertyCompareView.vue'),
+    meta: { requiresAuth: true, resource: 'property' },
+  },
+  {
+    path: '/properties/:id',
+    name: 'PropertyDetail',
+    component: () => import('@/views/properties/PropertyDetailView.vue'),
+    meta: { requiresAuth: true, resource: 'property' },
+  },
+  {
+    path: '/projects',
+    name: 'Projects',
+    component: () => import('@/views/properties/ProjectListView.vue'),
+    meta: { requiresAuth: true, resource: 'property' },
+  },
+  {
+    path: '/agencies',
+    name: 'Agencies',
+    component: () => import('@/views/properties/AgencyListView.vue'),
+    meta: { requiresAuth: true, resource: 'property' },
+  },
   {
     // Legacy redirect — now nested under /settings
     path: '/zalo-accounts',
@@ -141,6 +173,7 @@ const routes: RouteRecordRaw[] = [
 
       // ⚙ CRM Config — toàn bộ là cấu hình admin-level → resource 'settings'
       { path: 'crm/statuses',    name: 'Settings.Statuses',    component: () => import('@/components/settings/StatusManagement.vue'), meta: { resource: 'settings' } },
+      { path: 'crm/options',     name: 'Settings.Options',     component: () => import('@/components/settings/OptionsManagement.vue'), meta: { resource: 'settings' } },
       { path: 'crm/tags',        name: 'Settings.Tags',        component: () => import('@/components/settings/CrmTagManagement.vue'), meta: { resource: 'settings' } },
       // Tag Taxonomy v2 — M57 /plan-eng-review 2026-05-31 (Wave 4a dual-write window).
       // Khi Wave 5 ship, route /crm/tags này sẽ thành alias của tags-v2.
@@ -223,6 +256,9 @@ const routes: RouteRecordRaw[] = [
           // Tệp khách hàng (Customer Lists) — open-core, dùng được ở Community.
           { path: 'lists', name: 'CE.Lists', component: () => import('@/views/marketing/ListsView.vue'), meta: { requiresAuth: true } },
           { path: 'lists/:id', name: 'CE.ListDetail', component: () => import('@/views/marketing/ListDetailView.vue'), meta: { requiresAuth: true } },
+          // Chiến dịch (P4) — views do agent FE-B tạo.
+          { path: 'campaigns', name: 'CE.Campaigns', component: () => import('@/views/marketing/CampaignsView.vue'), meta: { requiresAuth: true } },
+          { path: 'campaigns/:id', name: 'CE.CampaignDetail', component: () => import('@/views/marketing/CampaignDetailView.vue'), meta: { requiresAuth: true } },
         ],
       } as RouteRecordRaw]
     : []),
@@ -334,6 +370,12 @@ const ROUTE_TITLES: Record<string, string> = {
   Chat: 'Hội thoại',
   Contacts: 'Khách hàng',
   Media: 'Kho phương tiện',
+  // Bảng hàng (Nguồn hàng) — 2026-11-15
+  Properties: 'Bảng hàng',
+  PropertyDetail: 'Chi tiết căn',
+  PropertyCompare: 'So sánh căn',
+  Projects: 'Dự án',
+  Agencies: 'Đại lý',
   Profile: 'Hồ sơ cá nhân',
   Appointments: 'Lịch hẹn',
   Reports: 'Báo cáo',
@@ -367,6 +409,7 @@ const ROUTE_TITLES: Record<string, string> = {
   'Settings.RbacPermissionGroups': 'Nhóm quyền',
   'Settings.RbacUsers': 'Người dùng',
   'Settings.Statuses': 'Trạng thái',
+  'Settings.Options': 'Tùy chọn',
   'Settings.Tags': 'Thẻ (tag)',
   'Settings.TagsV2': 'Thẻ (taxonomy)',
   'Settings.ZaloLabels': 'Nhãn Zalo',
@@ -403,6 +446,8 @@ const ROUTE_TITLES: Record<string, string> = {
   'Marketing.BroadcastDetail': 'Chi tiết Broadcast',
   'Marketing.Lists': 'Danh sách KH',
   'Marketing.ListDetail': 'Chi tiết danh sách',
+  'CE.Campaigns': 'Chiến dịch',
+  'CE.CampaignDetail': 'Chi tiết chiến dịch',
 };
 
 router.afterEach((to) => {

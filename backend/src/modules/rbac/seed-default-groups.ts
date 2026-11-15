@@ -23,11 +23,25 @@ export async function seedDefaultPermissionGroups(orgId: string): Promise<SeedRe
     // Idempotent: check by (orgId, name, isSystem)
     const existing = await prisma.permissionGroup.findFirst({
       where: { orgId, name: tmpl.name, isSystem: true },
-      select: { id: true, name: true, isSystem: true },
+      select: { id: true, name: true, isSystem: true, grants: true },
     });
     if (existing) {
       result.existing++;
       result.groups.push(existing);
+      // Backfill: nếu group đã tồn tại từ trước (seed cũ) mà THIẾU resource mới
+      // (vd 'property' thêm vào ma trận 2026-11-15), merge grant mới từ template
+      // vào — KHÔNG ghi đè grant admin đã tuỳ chỉnh cho resource cũ.
+      const currentGrants = (existing.grants ?? {}) as Record<string, unknown>;
+      const missingResources: Record<string, unknown> = {};
+      for (const [resource, grant] of Object.entries(tmpl.grants as Record<string, unknown>)) {
+        if (!currentGrants[resource]) missingResources[resource] = grant;
+      }
+      if (Object.keys(missingResources).length > 0) {
+        await prisma.permissionGroup.update({
+          where: { id: existing.id },
+          data: { grants: { ...currentGrants, ...missingResources } as object },
+        });
+      }
       continue;
     }
 

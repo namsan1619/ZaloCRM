@@ -52,6 +52,15 @@ import { appointmentPublicRoutes } from './modules/contacts/appointment-public-r
 import { notesRoutes } from './modules/contacts/notes-routes.js';
 import { startInteractionCron } from './modules/contacts/interaction-cron.js';
 import { crmTagRoutes } from './modules/contacts/crm-tag-routes.js';
+// ── CRM SĐT KH + Nguồn hàng (2026-11-15) ────────────────────────────────────
+import { registerMasterDataRoutes } from './modules/master-data/master-data-routes.js';
+import { registerContactImportRoutes } from './modules/contacts/contact-import-routes.js';
+import { registerContactRatingRoutes } from './modules/contacts/contact-rating-routes.js';
+import { propertyRoutes } from './modules/properties/property-routes.js';
+import { projectRoutes } from './modules/properties/project-routes.js';
+import { agencyRoutes } from './modules/properties/agency-routes.js';
+import { propertyImportRoutes } from './modules/properties/property-import-routes.js';
+import { campaignRoutes, campaignTrackerRoutes } from './modules/campaign/campaign-routes.js';
 import { crmTagGroupRoutes } from './modules/contacts/crm-tag-group-routes.js';
 import { userPreferenceRoutes } from './modules/auth/user-preference-routes.js';
 import { timelineRoutes } from './modules/activity/timeline-routes.js';
@@ -271,6 +280,16 @@ async function bootstrap() {
   await app.register(mediaRoutes);
   await app.register(contactRoutes);
   await app.register(statusRoutes);
+  // ── CRM SĐT KH + Nguồn hàng (2026-11-15) ────────────────────────────────────
+  await app.register(registerMasterDataRoutes);
+  await app.register(registerContactImportRoutes);
+  await app.register(registerContactRatingRoutes);
+  await app.register(propertyRoutes);
+  await app.register(projectRoutes);
+  await app.register(agencyRoutes);
+  await app.register(propertyImportRoutes);
+  await app.register(campaignRoutes);
+  await app.register(campaignTrackerRoutes);
   await app.register(contactSubResourceRoutes);
   await app.register(cockpitRoutes);
   await app.register(appointmentRoutes);
@@ -406,6 +425,15 @@ async function bootstrap() {
       const { registerCustomerListEventHandlers } = await import('./modules/lists/list-event-handlers.js');
       startListEnrichmentWorker();
       registerCustomerListEventHandlers();
+    }
+    // CRM SĐT KH (2026-11-15): worker import hàng loạt (không chặn boot nếu fail)
+    if (config.nodeEnv !== 'test') {
+      try {
+        const { startContactImportWorker } = await import('./modules/contacts/contact-import-worker.js');
+        startContactImportWorker();
+      } catch (err) {
+        logger.warn('contact-import-worker start failed: %o', err);
+      }
     }
     // Contact profile enrichment (3am daily) — kéo gender + ngày sinh KH từ Zalo getUserInfo
     // cho KH đang trống. 24h/lần để tránh rate-limit (Anh chốt 2026-06-06).

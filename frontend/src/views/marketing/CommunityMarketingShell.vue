@@ -38,9 +38,11 @@ import { useRoute } from 'vue-router';
 const route = useRoute();
 
 // Chỉ chức năng core. Phase 2 thêm Tệp khách hàng (/marketing/lists) khi Lists move ra core.
+// P4 (2026-11-15) thêm Chiến dịch (/marketing/campaigns).
 const navItems = [
   { to: '/marketing/group-scan', label: 'Quét nhóm', icon: 'mdi-account-group-outline' },
   { to: '/marketing/lists', label: 'Tệp khách hàng', icon: 'mdi-format-list-bulleted' },
+  { to: '/marketing/campaigns', label: 'Chiến dịch', icon: 'mdi-bullhorn-outline' },
 ];
 
 function isActive(to: string): boolean {

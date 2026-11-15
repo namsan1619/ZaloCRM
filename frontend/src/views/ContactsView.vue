@@ -108,6 +108,11 @@
         <option value="">Trạng thái KH</option>
         <option v-for="s in allMasterStatuses" :key="s.id" :value="s.id">{{ s.name }}</option>
       </select>
+      <!-- Mức đánh giá (MasterData TRANG_THAI_KH — P2 2026-11-15) -->
+      <select v-model="filters.ratingCode" @change="fetchContacts" title="Mức đánh giá KH">
+        <option value="">Mức đánh giá</option>
+        <option v-for="r in ratingOptions" :key="r.id" :value="r.code">{{ r.label }}</option>
+      </select>
       <select v-model="filters.assignedUserId" @change="fetchContacts" title="Sale phụ trách KH">
         <option value="">Tất cả sale</option>
         <option v-for="u in allUsers" :key="u.id" :value="u.id">{{ u.fullName }}</option>
@@ -116,6 +121,10 @@
       <!-- Thêm KH Nhanh (2026-06-05 Anh chốt: đưa từ FAB góc phải lên đây) -->
       <button class="btn btn-quick-add" @click="showAddCustomerDialog = true" title="Thêm khách hàng nhanh">
         ⚡ Thêm KH Nhanh
+      </button>
+      <!-- Import KH hàng loạt (P2 2026-11-15) -->
+      <button class="btn btn-quick-add" @click="showImportDialog = true" title="Import khách hàng hàng loạt từ file (CSV/Excel)">
+        ⬆ Import KH
       </button>
       <button v-if="hasAnyFilter" class="btn-clear" @click="clearAllFilters" title="Xoá tất cả bộ lọc">
         × Xoá lọc
@@ -222,7 +231,8 @@
           <col v-if="visibleCols.zaloGlobalId" style="width:130px">
           <col v-if="visibleCols.zaloUsername" style="width:130px">
           <col v-if="visibleCols.lookupState" style="width:100px">
-          <col style="width:78px">   <!-- 15 Action -->
+          <col style="width:96px">   <!-- 15 Mã KH (CRM SĐT KH — P2 2026-11-15) -->
+          <col style="width:78px">   <!-- 16 Action -->
         </colgroup>
         <thead>
           <tr>
@@ -246,6 +256,7 @@
             <th v-if="visibleCols.zaloGlobalId" class="w-130 c-extra" title="Zalo globalId toàn cục (dedup cross-account)">Global ID</th>
             <th v-if="visibleCols.zaloUsername" class="w-130 c-extra" title="Zalo username (handle t_xxx)">Username</th>
             <th v-if="visibleCols.lookupState" class="w-100 c-extra" title="Trạng thái tra Zalo qua SĐT">Lookup</th>
+            <th class="w-96 c-extra" title="Mã KH kinh doanh (KH000001…)">Mã KH</th>
             <th class="w-80 c-extra">Action</th>
           </tr>
         </thead>
@@ -449,6 +460,11 @@
                 </div>
                 <span v-else class="empty">chưa tra</span>
               </td>
+              <!-- Mã KH (CRM SĐT KH — P2 2026-11-15) -->
+              <td class="c-extra">
+                <span v-if="contact.customerCode" class="num">{{ contact.customerCode }}</span>
+                <span v-else class="empty">—</span>
+              </td>
               <td class="c-extra">
                 <div class="cl-action">
                   <button class="cl-btn cl-btn-profile" @click.stop="openProfile(contact)" title="Xem & sửa hồ sơ khách hàng">👤 Hồ sơ</button>
@@ -572,6 +588,8 @@
                     <span v-else class="empty">—</span>
                   </td>
                   <td v-if="visibleCols.lookupState" class="c-extra"></td>
+                  <!-- Mã KH (mức KH cha; friend row không có mã riêng — P2 2026-11-15) -->
+                  <td class="c-extra"><span v-if="contact.customerCode" class="num">{{ contact.customerCode }}</span></td>
                   <!-- col16 Action (💬 / ⚡ / ⬆) -->
                   <td class="c-extra">
                     <div class="cl-action">
@@ -660,6 +678,9 @@
       lead-source="contacts_quick"
       @created="onContactQuickCreated"
     />
+
+    <!-- Import KH hàng loạt (P2 2026-11-15) -->
+    <BulkImportDialog v-model="showImportDialog" @done="onImportDone" />
   </div>
 </template>
 
@@ -672,6 +693,8 @@ import PrivateBlur from '@/components/privacy/PrivateBlur.vue';
 import ParentCandidateDialog from '@/components/contacts/ParentCandidateDialog.vue';
 import DuplicateReviewDialog from '@/components/contacts/DuplicateReviewDialog.vue';
 import AddCustomerQuickDialog from '@/components/contacts/AddCustomerQuickDialog.vue';
+import BulkImportDialog from '@/components/contacts/BulkImportDialog.vue';
+import { useMasterData } from '@/composables/use-master-data';
 import type { CareStatusValue } from '@/constants/care-status';
 import Avatar from '@/components/ui/Avatar.vue';
 import { useToast } from '@/composables/use-toast';
@@ -733,7 +756,8 @@ function toggleColumn(key: OptColKey) {
 const totalColumnsCount = computed(() =>
   // 2026-06-04: gộp avatar+tên thành 1 cột (caret riêng) → 15 cột cố định.
   // 2026-06-17: cột UID giờ thuộc child-toggle (per-nick) → cộng riêng.
-  15 + Object.values(visibleCols.value).filter(Boolean).length + (visibleChildCols.value.zaloUid ? 1 : 0),
+  // 2026-11-15 (P2): thêm cột Mã KH → 16 cột cố định.
+  16 + Object.values(visibleCols.value).filter(Boolean).length + (visibleChildCols.value.zaloUid ? 1 : 0),
 );
 
 // Child (KH Con) optional cols — riêng vì bản chất per-Friend chứ không aggregate.
@@ -762,6 +786,18 @@ function toggleChildColumn(key: ChildColKey) {
 const showDuplicateDialog = ref(false);
 const showCandidateDialog = ref(false);
 const showAddCustomerDialog = ref(false);
+// Import KH hàng loạt (P2 2026-11-15)
+const showImportDialog = ref(false);
+
+// Mức đánh giá KH — danh mục MasterData TRANG_THAI_KH (P2 2026-11-15)
+const { itemsOf, fetchItems: fetchMasterDataItems } = useMasterData();
+const ratingOptions = computed(() => itemsOf('TRANG_THAI_KH'));
+
+function onImportDone() {
+  // Job import kết thúc → tải lại danh sách để thấy KH vừa tạo + mã KH mới
+  pagination.page = 1;
+  fetchContacts();
+}
 
 // Hồ sơ KH tổng (CustomerProfileDialog 2026-06-03) — modal tái dùng, mở từ nút "Xem hồ sơ".
 const showProfileDialog = ref(false);
@@ -856,7 +892,9 @@ const hasAnyFilter = computed(() =>
   !!(filters.search || filters.source || filters.statusId || filters.assignedUserId
      || filters.threadType || filters.hasZalo || filters.multiNick
      || filters.relationshipKindAny || filters.scoreMin != null || filters.scoreMax != null
-     || filters.dateFrom || filters.dateTo),
+     || filters.dateFrom || filters.dateTo
+     // Mức đánh giá + mã KH (P2 2026-11-15)
+     || filters.ratingCode),
 );
 function clearAllFilters() {
   filters.search = '';
@@ -871,6 +909,7 @@ function clearAllFilters() {
   filters.scoreMax = null;
   filters.dateFrom = '';
   filters.dateTo = '';
+  filters.ratingCode = '';
   pagination.page = 1;
   fetchContacts();
 }
@@ -1516,6 +1555,8 @@ onMounted(() => {
   loadStats();
   loadMasterStatuses();
   loadUsers();
+  // Options mức đánh giá (MasterData TRANG_THAI_KH) cho select lọc — P2 2026-11-15
+  void fetchMasterDataItems('TRANG_THAI_KH');
 });
 
 // M55.2 2026-05-30 — Handle /contacts?focus={id} từ AddCustomerQuickDialog

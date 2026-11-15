@@ -10,6 +10,10 @@
  *       (discovery of has-Zalo happens as a side-effect of the attempt).
  *   GET  /api/v1/campaigns/contacts/:contactId/attempts
  *     → counts of attempts per state, for UI display on contact detail.
+ *
+ * P4 tracker (CRUD + stats cho chiến dịch marketing) nằm ở file riêng
+ * `campaign-tracker-routes.ts` — re-export ở đây để app.ts chỉ cần 1 import
+ * cho toàn bộ module campaign. 2 endpoint CE cũ ở trên GIỮ NGUYÊN.
  */
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authMiddleware } from '../auth/auth-middleware.js';
@@ -17,6 +21,8 @@ import { resolveAccount, checkAccess, handleError } from '../zalo/zalo-route-hel
 import { prisma } from '../../shared/database/prisma-client.js';
 import { logger } from '../../shared/utils/logger.js';
 import { executeRandomFriendRequest } from './campaign-service.js';
+
+export { campaignTrackerRoutes } from './campaign-tracker-routes.js';
 
 interface RandomFriendReqBody {
   zaloAccountId: string;

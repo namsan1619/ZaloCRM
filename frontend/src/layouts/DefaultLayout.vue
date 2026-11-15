@@ -287,6 +287,7 @@ const primaryTabs: NavTab[] = [
   { path: '/chat',                   label: 'Tin nhắn',    icon: 'mdi-message-text-outline', resource: 'conversation' },
   { path: '/friends',                label: 'Bạn bè',      icon: 'mdi-account-multiple-outline', resource: 'friend' },
   { path: '/contacts',               label: 'Khách hàng',  icon: 'mdi-account-outline', resource: 'contact' },
+  { path: '/properties',             label: 'Bảng hàng',   icon: 'mdi-office-building-outline', resource: 'property' },
   { path: '/appointments',           label: 'Lịch hẹn',    icon: 'mdi-calendar-outline' },
   { path: '/media',                  label: 'Kho ảnh',     icon: 'mdi-image-multiple-outline', resource: 'media' },
 ];

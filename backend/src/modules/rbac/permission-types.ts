@@ -18,7 +18,7 @@ export const ACTIONS = [
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
-// 18 resources, GOM THEO NHÓM MÀN HÌNH (2026-06-20) để ma trận phân quyền đọc theo
+// 19 resources, GOM THEO NHÓM MÀN HÌNH (2026-06-20) để ma trận phân quyền đọc theo
 // menu — admin gán quyền dễ hơn. Thứ tự ở đây = thứ tự cột dọc trong UI ma trận.
 export const RESOURCES = [
   // ── Hệ thống & tổ chức (menu Cài đặt / Phân quyền) ──
@@ -38,6 +38,8 @@ export const RESOURCES = [
   'broadcast',          // Chiến dịch          → /marketing/broadcasts
   'block',              // Message Block       → /marketing/blocks
   'care_session',       // Phiên chăm sóc      → /marketing/care-sessions
+  // ── Nguồn hàng (menu Nguồn hàng) ──
+  'property',           // Nguồn hàng BĐS      → /properties (đại lý, dự án, căn, bảng hàng)
   // ── Kênh & tài nguyên ──
   'zalo_account',       // Nick Zalo           → /settings/channels/zalo
   'media',              // Kho phương tiện     → /media
@@ -71,6 +73,9 @@ export const RESOURCE_ACTIONS: Record<Resource, readonly Action[]> = {
   // Kho phương tiện — access=xem/dùng kho, create=tải lên/lưu, edit=sửa quyền/tag/watermark,
   // delete=archive, view_all=xem cả org bỏ qua scope owner (admin/marketing).
   media: ['access', 'create', 'edit', 'delete', 'view_all'],
+  // Nguồn hàng BĐS — access=xem đại lý/dự án/căn, create=thêm+import bảng hàng,
+  // edit=sửa, delete=xóa (soft), view_all=xem toàn org bỏ qua scope dept.
+  property: ['access', 'create', 'edit', 'delete', 'view_all'],
 };
 
 // JSON shape lưu trong permission_groups.grants:
@@ -167,6 +172,7 @@ export const DEFAULT_PERMISSION_GROUPS = [
       audit_log: viewAll('audit_log'),
       settings: { access: true },
       media: viewAll('media'), // xem cả kho org
+      property: viewAll('property'), // xem toàn bộ bảng hàng
     } as GrantsJson,
   },
   {
@@ -189,6 +195,7 @@ export const DEFAULT_PERMISSION_GROUPS = [
       audit_log: { access: true },
       settings: { access: true },
       media: { access: true, create: true, edit: true, delete: true, view_all: true }, // full trong scope dept
+      property: { access: true, view_all: true, create: true, edit: true, delete: true }, // full quản lý bảng hàng
     } as GrantsJson,
   },
   {
@@ -208,6 +215,7 @@ export const DEFAULT_PERMISSION_GROUPS = [
       engagement_score: { access: true },
       audit_log: { access: true },
       media: { access: true, create: true, edit: true }, // kho của mình (scope owner)
+      property: { access: true, create: true, edit: true }, // nhập + sửa bảng hàng
     } as GrantsJson,
   },
   {
@@ -228,6 +236,7 @@ export const DEFAULT_PERMISSION_GROUPS = [
       zalo_account: { access: true, create: true, delete: true },
       engagement_score: { access: true },
       media: { access: true, create: true, edit: true }, // kho của mình (scope owner) — sale dùng nhiều nhất
+      property: { access: true, create: true, edit: true }, // nhập bảng hàng đại lý
     } as GrantsJson,
   },
   {
@@ -245,6 +254,7 @@ export const DEFAULT_PERMISSION_GROUPS = [
       engagement_score: viewAll('engagement_score'),
       audit_log: { access: true },
       media: { access: true, create: true, edit: true, delete: true, view_all: true }, // tài sản marketing dùng chung
+      property: viewAll('property'), // campaign cần chọn dự án/căn → xem toàn org
     } as GrantsJson,
   },
   {

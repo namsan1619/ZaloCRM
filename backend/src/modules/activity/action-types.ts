@@ -87,6 +87,37 @@ export const ACTION_CATEGORY: Record<string, ActivityCategory> = {
   data_import: 'system',
   data_export: 'system',
 
+  // system — MasterData (danh mục dùng chung): tạo/sửa/xóa nhóm & mục danh mục
+  master_data_created: 'system',
+  master_data_updated: 'system',
+  master_data_deleted: 'system',
+
+  // system — Import KH hàng loạt (2026-11-15)
+  contact_import_upload: 'system',
+  contact_import_preview: 'system',
+  contact_import_cancel: 'system',
+
+  // customer_info — Đánh giá tay KH (2026-11-15)
+  contact_rating_change: 'customer_info',
+
+  // customer_info/system — Nguồn hàng: căn/dự án/đại lý (2026-11-15)
+  property_created: 'customer_info',
+  property_updated: 'customer_info',
+  property_deleted: 'customer_info',
+  property_import: 'system',
+  project_created: 'customer_info',
+  project_updated: 'customer_info',
+  project_deleted: 'customer_info',
+  agency_created: 'customer_info',
+  agency_updated: 'customer_info',
+  agency_deleted: 'customer_info',
+
+  // system — Chiến dịch Marketing tracker (2026-11-15)
+  campaign_created: 'system',
+  campaign_updated: 'system',
+  campaign_deleted: 'system',
+  campaign_status_change: 'system',
+
   // automation
   bot_tag_auto: 'automation',
   bot_score_calc: 'automation',

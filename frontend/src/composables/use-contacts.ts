@@ -90,6 +90,11 @@ export interface Contact {
   zaloLookupAttempts?: number;
   importBatchId?: string | null;
 
+  // CRM SĐT KH + Nguồn hàng (2026-11-15): mã KH kinh doanh + đánh giá tay
+  customerCode?: string | null;
+  ratingCode?: string | null;
+  ratingNote?: string | null;
+
   // #4 (2026-06-20): số lần gắn sequence (auto+manual), aggregate mức Cha — read-only
   sequenceAttachCount?: number;
   sequenceActiveCount?: number;
@@ -287,6 +292,9 @@ export interface ContactFilters {
   sequenceAttachMin?: number | null; // #4: lọc KH gắn ≥ N sequence
   friendInviteMin?: number | null;   // #3: lọc KH đã gửi kết bạn ≥ N lần
   sort?: 'score' | '' | null;        // 'score' = điểm cao lên đầu; rỗng = tương tác mới nhất
+  // CRM SĐT KH (2026-11-15): lọc theo mã KH + mức đánh giá (code trong MasterData TRANG_THAI_KH)
+  customerCode?: string;
+  ratingCode?: string;
 }
 
 export const SOURCE_OPTIONS = [
@@ -330,6 +338,8 @@ export function useContacts() {
     sequenceAttachMin: null,
     friendInviteMin: null,
     sort: null,
+    customerCode: '',
+    ratingCode: '',
   });
 
   const pagination = reactive({ page: 1, limit: 20 });
@@ -357,6 +367,8 @@ export function useContacts() {
           sequenceAttachMin: filters.sequenceAttachMin ?? undefined,
           friendInviteMin: filters.friendInviteMin ?? undefined,
           sort: filters.sort || undefined,
+          customerCode: filters.customerCode || undefined,
+          ratingCode: filters.ratingCode || undefined,
         },
       });
       contacts.value = res.data.contacts ?? res.data;
