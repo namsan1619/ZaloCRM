@@ -23,6 +23,7 @@ import { backfillFriendDisplayName } from './backfill-friend-display-name.js';
 import { migrateStatusTable } from './status-migration.js';
 import { computeAggregateDisplay, computeViewerPreview, AGGREGATE_INCLUDE } from './contact-aggregate-display.js';
 import { getContactScope, assertContactVisible, attachContactCollaboratorByUser, assertContactEditable } from './contact-scope.js';
+import { reserveCustomerCodeRange, formatCustomerCode } from './contact-code-service.js';
 import { getZaloScope } from '../zalo/zalo-scope.js';
 import { runAutomationRules } from '../../shared/ee-registry/automation.js';
 import { normalizePhone } from '../../shared/utils/phone.js';
@@ -30,6 +31,57 @@ import { logActivity, computeDiff } from '../activity/activity-logger.js';
 import { emitWebhook } from '../api/webhook-service.js';
 
 type QueryParams = Record<string, string>;
+
+const RATING_NOTE_MAX_LEN = 2000;
+
+/** Kết quả đọc ratingCode/ratingNote từ body (dùng chung POST + PUT). */
+type RatingInput =
+  | { action: 'skip' }
+  | { action: 'clear' }
+  | { action: 'invalid' }
+  | {
+      action: 'set';
+      data: { ratingCode: string; ratingNote: string | null; ratedById: string; ratedAt: Date };
+    };
+
+/**
+ * CRM SĐT KH (2026-11-16) — Đánh giá tay trong body của POST /contacts + PUT /contacts/:id.
+ *
+ * Quy ước (khớp với route chuyên dụng PUT /api/v1/contacts/:id/rating):
+ *  - ratingCode undefined        → 'skip'   : KHÔNG đụng rating đang có.
+ *  - ratingCode '' hoặc null     → 'clear'  : tháo đánh giá (set null).
+ *  - ratingCode có giá trị       → phải là mã MasterData đang ACTIVE trong category
+ *    TRANG_THAI_KH của cùng org; không hợp lệ → 'invalid' (caller trả 400 rõ ràng).
+ *  - ratingNote chỉ được ghi khi đi kèm ratingCode hợp lệ (gửi note lẻ → bỏ qua).
+ */
+async function resolveRatingInput(
+  userId: string,
+  orgId: string,
+  body: Record<string, any>,
+): Promise<RatingInput> {
+  if (body.ratingCode === undefined) return { action: 'skip' };
+  const code = body.ratingCode === null ? '' : String(body.ratingCode).trim();
+  if (!code) return { action: 'clear' };
+
+  const md = await prisma.masterData.findFirst({
+    where: { code, isActive: true, category: { key: 'TRANG_THAI_KH', orgId } },
+    select: { code: true },
+  });
+  if (!md) return { action: 'invalid' };
+
+  return {
+    action: 'set',
+    data: {
+      ratingCode: md.code,
+      ratingNote:
+        body.ratingNote !== undefined && body.ratingNote !== null
+          ? String(body.ratingNote).trim().slice(0, RATING_NOTE_MAX_LEN)
+          : null,
+      ratedById: userId,
+      ratedAt: new Date(),
+    },
+  };
+}
 
 export async function contactRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', authMiddleware);
@@ -556,9 +608,25 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           hint: 'Tên chứa ký tự che (▒) — không thể lưu giá trị đã làm mờ',
         });
       }
+
+      // CRM SĐT KH (2026-11-16): đánh giá tay ngay lúc tạo KH.
+      const ratingInput = await resolveRatingInput(user.id, user.orgId, body);
+      if (ratingInput.action === 'invalid') {
+        return reply.status(400).send({
+          error: 'ratingCode không hợp lệ',
+          hint: 'ratingCode phải là mã đang active trong danh mục TRANG_THAI_KH (MasterData) của org',
+        });
+      }
+
+      // CRM SĐT KH (2026-11-16): cấp mã KH tự động cho KH tạo tay.
+      // Cấp dải số atomic qua ContactCodeSequence → 2 request song song không trùng mã.
+      const { start: codeSeq } = await reserveCustomerCodeRange(user.orgId, 1);
+      const customerCode = formatCustomerCode(codeSeq);
+
       const contact = await prisma.contact.create({
         data: {
           orgId: user.orgId,
+          customerCode,
           fullName: body.fullName,
           crmName: body.crmName,
           phone: body.phone,
@@ -580,6 +648,7 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           phonesExtra: Array.isArray(body.phonesExtra)
             ? body.phonesExtra.filter((p: any) => p && typeof p.phone === 'string' && p.phone.trim())
             : undefined,
+          ...(ratingInput.action === 'set' ? ratingInput.data : {}),
         },
       });
 
@@ -650,6 +719,29 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           // engine not loaded — silent
         }
       })();
+
+      // CRM SĐT KH (2026-11-16): log hành động gán mã KH (mọi KH tạo tay đều có mã).
+      logActivity({
+        orgId: user.orgId,
+        userId: user.id,
+        action: 'customer_create',
+        category: 'customer_info',
+        entityType: 'contact',
+        entityId: contact.id,
+        details: { customerCode },
+      });
+      // Tạo KH kèm đánh giá tay → ghi thêm 1 log rating cho timeline.
+      if (ratingInput.action === 'set' && ratingInput.data) {
+        logActivity({
+          orgId: user.orgId,
+          userId: user.id,
+          action: 'contact_rating_change',
+          category: 'customer_info',
+          entityType: 'contact',
+          entityId: contact.id,
+          details: { old: null, new: ratingInput.data.ratingCode, customerCode },
+        });
+      }
 
       return reply.status(201).send(contact);
     } catch (err) {
@@ -737,6 +829,9 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const leadSource = (body.leadSource ?? 'quick_add').trim() || 'quick_add';
+      // Cấp mã KH cho KH tạo nhanh — nhất quán với POST /contacts (mọi KH tay đều có mã).
+      const { start: quickCodeSeq } = await reserveCustomerCodeRange(user.orgId, 1);
+      const quickCustomerCode = formatCustomerCode(quickCodeSeq);
       const contact = await prisma.contact.create({
         data: {
           orgId: user.orgId,
@@ -747,12 +842,13 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           status: 'new',
           hasZalo: null, // chưa search Zalo
           assignedUserId: user.id,
+          customerCode: quickCustomerCode,
           tags: [],
           metadata: {},
         },
         select: {
           id: true, fullName: true, crmName: true, phone: true,
-          hasZalo: true, source: true, assignedUserId: true, createdAt: true,
+          hasZalo: true, source: true, assignedUserId: true, customerCode: true, createdAt: true,
         },
       });
 
@@ -1014,6 +1110,8 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
           id: true, status: true, statusId: true, fullName: true, phone: true, source: true,
           assignedUserId: true, crmName: true, email: true, gender: true,
           birthDate: true, leadScore: true, addressLine: true, occupation: true,
+          // CRM SĐT KH (2026-11-16): đánh giá tay — cần old value để log diff.
+          ratingCode: true, ratingNote: true,
         },
       });
       if (!existing) return reply.status(404).send({ error: 'Contact not found' });
@@ -1115,6 +1213,23 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         updateData.firstContactDate = body.firstContactDate ? new Date(body.firstContactDate) : null;
       }
 
+      // CRM SĐT KH (2026-11-16): PUT /contacts/:id nhận ratingCode/ratingNote.
+      // Validation giống route chuyên dụng PUT /:id/rating (MasterData TRANG_THAI_KH).
+      const ratingInput = await resolveRatingInput(user.id, user.orgId, body);
+      if (ratingInput.action === 'invalid') {
+        return reply.status(400).send({
+          error: 'ratingCode không hợp lệ',
+          hint: 'ratingCode phải là mã đang active trong danh mục TRANG_THAI_KH (MasterData) của org',
+        });
+      }
+      if (ratingInput.action === 'set' && ratingInput.data) {
+        Object.assign(updateData, ratingInput.data);
+      } else if (ratingInput.action === 'clear') {
+        Object.assign(updateData, {
+          ratingCode: null, ratingNote: null, ratedById: null, ratedAt: null,
+        });
+      }
+
       const updated = await prisma.contact.update({
         where: { id },
         data: updateData,
@@ -1197,6 +1312,25 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
       // ── ACTIVITY LOG — diff với existing để log đúng action types ─────────
       // Tách action-specific logs (status, score) vs bulk customer_update.
       // Status change ưu tiên (workflow critical), score change track delta.
+      // CRM SĐT KH (2026-11-16): đổi đánh giá tay → log riêng (old → new).
+      if (
+        ratingInput.action !== 'skip' &&
+        (existing.ratingCode !== updated.ratingCode || existing.ratingNote !== updated.ratingNote)
+      ) {
+        logActivity({
+          orgId: user.orgId,
+          userId: user.id,
+          action: 'contact_rating_change',
+          category: 'customer_info',
+          entityType: 'contact',
+          entityId: updated.id,
+          details: {
+            old: existing.ratingCode,
+            new: updated.ratingCode,
+            customerCode: updated.customerCode,
+          },
+        });
+      }
       if (existing.status !== updated.status) {
         logActivity({
           orgId: user.orgId,

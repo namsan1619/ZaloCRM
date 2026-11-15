@@ -121,58 +121,13 @@
       <p>Căn này có thể đã bị xoá hoặc bạn không có quyền xem.</p>
     </div>
 
-    <!-- ════════ Edit dialog ════════ -->
-    <v-dialog v-model="showEdit" max-width="560">
-      <v-card>
-        <v-card-title>
-          <v-icon size="18">mdi-pencil-outline</v-icon> Sửa căn {{ property?.unitCode }}
-        </v-card-title>
-        <v-card-text>
-          <v-text-field v-model="form.unitCode" label="Mã căn *" />
-          <v-select
-            v-model="form.statusCode"
-            label="Trạng thái *"
-            :items="statusOptions"
-            item-title="label"
-            item-value="code"
-          />
-          <v-select
-            v-model="form.propertyTypeCode"
-            label="Loại căn"
-            :items="typeOptions"
-            item-title="label"
-            item-value="code"
-            clearable
-          />
-          <div class="d-flex ga-3">
-            <v-text-field v-model="form.priceVnd" label="Giá bán (VND)" type="number" />
-            <v-text-field v-model="form.priceTtsVnd" label="Theo TTS" type="number" />
-          </div>
-          <div class="d-flex ga-3">
-            <v-text-field v-model="form.priceHtlsVnd" label="Theo HTLS" type="number" />
-            <v-text-field v-model="form.unitPriceTtsVnd" label="Đơn giá TTS/m²" type="number" />
-          </div>
-          <div class="d-flex ga-3">
-            <v-text-field v-model="form.usableAreaM2" label="Diện tích (m²)" type="number" />
-            <v-select
-              v-model="form.directionCode"
-              label="Hướng"
-              :items="directionOptions"
-              item-title="label"
-              item-value="code"
-              clearable
-            />
-          </div>
-          <v-textarea v-model="form.note" label="Ghi chú" auto-grow rows="2" />
-          <v-alert v-if="formError" type="error" density="compact" class="mt-3">{{ formError }}</v-alert>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer />
-          <v-btn @click="showEdit = false">Huỷ</v-btn>
-          <v-btn color="primary" :loading="saving" @click="saveEdit">Lưu</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <!-- ════════ Edit dialog (form dùng chung) ════════ -->
+    <PropertyFormDialog
+      v-model="showEdit"
+      mode="edit"
+      :property="property"
+      @saved="onSaved"
+    />
   </div>
 </template>
 
@@ -188,17 +143,16 @@ import {
   type PropertyItem,
 } from '@/composables/use-properties';
 import { useToast } from '@/composables/use-toast';
+import PropertyFormDialog from '@/components/properties/PropertyFormDialog.vue';
 
 const route = useRoute();
 const toast = useToast();
-const { fetchPropertyById, updateProperty } = useProperties();
+const { fetchPropertyById } = useProperties();
 
 const property = ref<PropertyItem | null>(null);
 const loading = ref(true);
 
 const showEdit = ref(false);
-const saving = ref(false);
-const formError = ref('');
 
 const typeOptions = ref<MasterOption[]>([]);
 const statusOptions = ref<MasterOption[]>([]);
@@ -214,12 +168,6 @@ function labelFor(list: MasterOption[], code: string | null): string {
   const hit = list.find((o) => o.code === code);
   return hit?.label ?? code;
 }
-
-const form = ref({
-  unitCode: '', statusCode: '', propertyTypeCode: '',
-  priceVnd: '', priceTtsVnd: '', priceHtlsVnd: '', unitPriceTtsVnd: '',
-  usableAreaM2: '', directionCode: '', note: '',
-});
 
 const id = String(route.params.id ?? '');
 
@@ -260,57 +208,15 @@ async function loadMasterOptions() {
   mechanismOptions.value = mechs;
 }
 
-// ───────── Edit ─────────
+// ───────── Edit (form dùng chung) ─────────
 function openEdit() {
-  const p = property.value;
-  if (!p) return;
-  form.value = {
-    unitCode: p.unitCode,
-    statusCode: p.statusCode,
-    propertyTypeCode: p.propertyTypeCode ?? '',
-    priceVnd: p.priceVnd != null ? String(p.priceVnd).replace(/[^\d]/g, '') : '',
-    priceTtsVnd: p.priceTtsVnd != null ? String(p.priceTtsVnd).replace(/[^\d]/g, '') : '',
-    priceHtlsVnd: p.priceHtlsVnd != null ? String(p.priceHtlsVnd).replace(/[^\d]/g, '') : '',
-    unitPriceTtsVnd: p.unitPriceTtsVnd != null ? String(p.unitPriceTtsVnd).replace(/[^\d]/g, '') : '',
-    usableAreaM2: p.usableAreaM2 != null ? String(p.usableAreaM2) : '',
-    directionCode: p.directionCode ?? '',
-    note: p.note ?? '',
-  };
-  formError.value = '';
+  if (!property.value) return;
   showEdit.value = true;
 }
 
-async function saveEdit() {
-  if (!property.value) return;
-  if (!form.value.unitCode.trim() || !form.value.statusCode) {
-    formError.value = 'Mã căn và trạng thái là bắt buộc';
-    return;
-  }
-  saving.value = true;
-  formError.value = '';
-  try {
-    const payload = {
-      unitCode: form.value.unitCode.trim(),
-      statusCode: form.value.statusCode,
-      propertyTypeCode: form.value.propertyTypeCode || null,
-      priceVnd: form.value.priceVnd ? form.value.priceVnd : null,
-      priceTtsVnd: form.value.priceTtsVnd ? form.value.priceTtsVnd : null,
-      priceHtlsVnd: form.value.priceHtlsVnd ? form.value.priceHtlsVnd : null,
-      unitPriceTtsVnd: form.value.unitPriceTtsVnd ? form.value.unitPriceTtsVnd : null,
-      usableAreaM2: form.value.usableAreaM2 ? Number(form.value.usableAreaM2) : null,
-      directionCode: form.value.directionCode || null,
-      note: form.value.note || null,
-    };
-    await updateProperty(property.value.id, payload);
-    toast.success('Đã cập nhật căn');
-    showEdit.value = false;
-    await loadProperty();
-  } catch (err) {
-    formError.value = (err as { response?: { data?: { error?: string } } }).response?.data?.error
-      ?? 'Lưu thất bại';
-  } finally {
-    saving.value = false;
-  }
+async function onSaved() {
+  toast.success('Đã cập nhật căn');
+  await loadProperty();
 }
 
 // ───────── Label helpers ─────────

@@ -53,6 +53,8 @@
                 <span v-if="c.email">✉ {{ c.email }}</span>
                 <span v-if="locationLine">📍 {{ locationLine }}</span>
                 <span v-if="c.createdAt">📅 KH từ {{ formatDate(c.createdAt) }}</span>
+                <!-- Mã KH kinh doanh (P2 2026-11-15) — chỉ hiển thị, không sửa tay -->
+                <span v-if="c.customerCode" class="cpd-code" title="Mã KH kinh doanh">🏷 {{ c.customerCode }}</span>
               </div>
               <div class="cpd-pills">
                 <span class="zpill" :class="zaloPillClass">{{ zaloPillText }}</span>
@@ -253,6 +255,11 @@
 
                       <!-- Ngoài 36 biến (không chèn được vào tin) — cùng style bảng -->
                       <tr class="attr-grp"><td colspan="3">🪪 Định danh Cha (ngoài biến)</td></tr>
+                      <tr class="attr-itrow">
+                        <td class="attr-lbl">Mã KH</td>
+                        <td class="attr-code"><span class="nocode">—</span></td>
+                        <td class="attr-val"><span v-if="cc.customerCode" class="mono kh-code">{{ cc.customerCode }}</span><span v-else class="dim">— chưa có mã —</span></td>
+                      </tr>
                       <tr class="attr-itrow">
                         <td class="attr-lbl">Global ID</td>
                         <td class="attr-code"><span class="nocode">—</span></td>
@@ -957,6 +964,8 @@ async function copyAttr(code: string) {
 .gtag.female { background: rgba(233, 30, 99, 0.12); color: #c2185b; }
 .age { font-size: 13px; color: var(--smax-grey-700); font-weight: 500; }
 .cpd-sub { font-size: 12.5px; color: var(--smax-grey-700); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; }
+.cpd-code { font-family: var(--mono, 'Roboto Mono', monospace); font-weight: 600; color: var(--brand-700, #0b5880); background: var(--brand-soft, #e4f1f8); border-radius: 5px; padding: 1px 7px; }
+.attr-val .kh-code { font-weight: 700; color: var(--brand-700, #0b5880); }
 .cpd-pills { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; align-items: center; }
 .cpd-scorebig { flex-shrink: 0; text-align: center; padding: 0 6px; }
 .cpd-scorebig .n { font-size: 26px; font-weight: 800; line-height: 1; }

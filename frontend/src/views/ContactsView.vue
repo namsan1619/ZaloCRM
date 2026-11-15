@@ -12,8 +12,13 @@
         </div>
         <!-- Hàng 1: action căn lề phải -->
         <div class="header-actions">
-          <button class="btn btn-primary" @click="openCreate">
-            <svg class="lc" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg> Thêm Khách Hàng
+          <!-- Thêm KH lẻ — form hồ sơ đầy đủ (mode="create" của CustomerProfileDialog) -->
+          <button
+            class="btn btn-primary"
+            @click="openCreate"
+            title="Thêm khách hàng lẻ — mở form hồ sơ đầy đủ (Tên + SĐT là bắt buộc)"
+          >
+            <svg class="lc" viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg> Thêm KH lẻ
           </button>
           <div class="seg-cluster">
           <button class="seg-btn" :class="{ on: showAdvanced }" @click="showAdvanced = !showAdvanced">
@@ -232,7 +237,7 @@
           <col v-if="visibleCols.zaloUsername" style="width:130px">
           <col v-if="visibleCols.lookupState" style="width:100px">
           <col style="width:96px">   <!-- 15 Mã KH (CRM SĐT KH — P2 2026-11-15) -->
-          <col style="width:78px">   <!-- 16 Action -->
+          <col style="width:120px">  <!-- 16 Action (Hồ sơ + Sửa — nới rộng cho 2 nút cạnh nhau 2026-11-16) -->
         </colgroup>
         <thead>
           <tr>
@@ -257,7 +262,7 @@
             <th v-if="visibleCols.zaloUsername" class="w-130 c-extra" title="Zalo username (handle t_xxx)">Username</th>
             <th v-if="visibleCols.lookupState" class="w-100 c-extra" title="Trạng thái tra Zalo qua SĐT">Lookup</th>
             <th class="w-96 c-extra" title="Mã KH kinh doanh (KH000001…)">Mã KH</th>
-            <th class="w-80 c-extra">Action</th>
+            <th class="w-120 c-extra">Action</th>
           </tr>
         </thead>
         <tbody>
@@ -468,6 +473,9 @@
               <td class="c-extra">
                 <div class="cl-action">
                   <button class="cl-btn cl-btn-profile" @click.stop="openProfile(contact)" title="Xem & sửa hồ sơ khách hàng">👤 Hồ sơ</button>
+                  <!-- 2026-11-16: nút Sửa nhanh trên từng dòng KH — mở thẳng form sửa
+                       (CustomerProfileDialog mở ở tab "Tổng quan" = form chỉnh sửa). -->
+                  <button class="cl-btn cl-btn-edit" @click.stop="openProfile(contact)" title="Sửa thông tin khách hàng này">✎ Sửa</button>
                   <!-- 💬 bỏ khỏi dòng KH Cha (chốt 2026-06-04): chat mở từ friend row,
                        vì 1 KH Cha có thể nhiều nick → chọn nick cụ thể ở row con. -->
                 </div>
@@ -620,6 +628,8 @@
         @close="closeDetailPane"
         @go-chat="goChat(selectedContact!)"
         @saved="onSaved"
+        @edit="onDetailEdit"
+        @appointment="onDetailAppointment"
       />
     </aside>
     </div><!-- /.dual-pane -->
@@ -647,6 +657,14 @@
       v-model="showCreateProfile"
       mode="create"
       @created="onContactCreated"
+    />
+
+    <!-- Nhắc hẹn — mở từ nút "📅 Đặt lịch hẹn" ở ContactDetailPanel (mode Chi tiết) -->
+    <AppointmentEditor
+      v-model="showAppointmentEditor"
+      :prefill-contact="appointmentPrefill"
+      @created="onAppointmentSaved"
+      @updated="onAppointmentSaved"
     />
 
     <!-- Friend status picker dialog (per-pair status) -->
@@ -689,6 +707,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import ContactDetailPanel from '@/components/contacts/ContactDetailPanel.vue';
 import CustomerProfileDialog from '@/components/contacts/CustomerProfileDialog.vue';
+import AppointmentEditor from '@/components/appointments/AppointmentEditor.vue';
 import PrivateBlur from '@/components/privacy/PrivateBlur.vue';
 import ParentCandidateDialog from '@/components/contacts/ParentCandidateDialog.vue';
 import DuplicateReviewDialog from '@/components/contacts/DuplicateReviewDialog.vue';
@@ -800,11 +819,40 @@ function onImportDone() {
 }
 
 // Hồ sơ KH tổng (CustomerProfileDialog 2026-06-03) — modal tái dùng, mở từ nút "Xem hồ sơ".
+// Mở từ nút "✎ Sửa" (dòng KH / panel Chi tiết) cũng đi qua đây: dialog mở ở tab
+// "Tổng quan" = form chỉnh sửa trực tiếp (kể cả khi KH chưa có mã KH / chưa có nick).
 const showProfileDialog = ref(false);
 const profileContactId = ref<string | null>(null);
 function openProfile(c: Contact) {
   profileContactId.value = c.id;
   showProfileDialog.value = true;
+}
+
+// ── ContactDetailPanel (mode Chi tiết): nút "✎ Sửa" + "📅 Đặt lịch hẹn" ──
+function onDetailEdit() {
+  // Nút Sửa trước đây emit 'edit' nhưng ContactsView không bắt → nút chết.
+  // Giờ dùng lại openProfile() đã có: mở hồ sơ KH này (tab Tổng quan = form sửa).
+  if (selectedContact.value) openProfile(selectedContact.value);
+}
+function onDetailAppointment() {
+  if (!selectedContact.value) return;
+  showAppointmentEditor.value = true;
+}
+const showAppointmentEditor = ref(false);
+const appointmentPrefill = computed(() => {
+  const c = selectedContact.value;
+  if (!c) return null;
+  return {
+    id: c.id,
+    fullName: c.fullName || c.crmName || null,
+    phone: c.phone || null,
+    zaloUid: c.zaloUid ?? null,
+    zaloUsername: c.zaloUsername ?? null,
+  };
+});
+function onAppointmentSaved() {
+  toast.success('Đã lưu nhắc hẹn');
+  fetchContacts();
 }
 function onProfileSaved() { fetchContacts(); }
 // 2026-06-03: form Thêm KH dùng chính CustomerProfileDialog mode='create' (đồng nhất style Smax)
@@ -2668,6 +2716,9 @@ watch(
 .cl-btn:hover { border-color: var(--smax-primary); color: var(--smax-primary); }
 .cl-btn-profile { background: var(--smax-primary-soft); border-color: var(--smax-primary); color: var(--smax-primary); font-weight: 600; }
 .cl-btn-profile:hover { background: var(--smax-primary); color: var(--surface); }
+/* 2026-11-16: nút "✎ Sửa" trên dòng KH — giữ nhẹ hơn "Hồ sơ" (primary-soft), hover đổi primary */
+.cl-btn-edit { font-weight: 500; }
+.cl-btn-edit:hover { background: var(--smax-primary-soft); border-color: var(--smax-primary); color: var(--smax-primary); }
 .fr-row .cl-btn { width: 22px; height: 22px; padding: 0; text-align: center; line-height: 20px; }
 .fr-row .cl-action { gap: 3px; }
 .cl-btn-primary { background: var(--smax-primary); color: var(--surface); border-color: var(--smax-primary); }

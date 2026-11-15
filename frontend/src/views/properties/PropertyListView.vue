@@ -17,6 +17,9 @@
         <button class="btn btn-ghost btn-sm" @click="showImport = true">
           <v-icon size="16">mdi-tray-arrow-down</v-icon> Import bảng hàng
         </button>
+        <button class="btn btn-primary btn-sm" @click="openCreate">
+          <v-icon size="16">mdi-plus</v-icon> Thêm căn lẻ
+        </button>
         <button class="btn btn-ghost btn-sm" @click="goProjects">
           <v-icon size="16">mdi-domain</v-icon> Dự án
         </button>
@@ -162,7 +165,10 @@
                 <span class="dot"></span>{{ statusLabel(p.statusCode) }}
               </span>
             </td>
-            <td class="right">
+            <td class="right row-actions" @click.stop>
+              <button class="btn btn-ghost btn-sm" title="Sửa thông tin căn" @click="openEdit(p)">
+                <v-icon size="14">mdi-pencil-outline</v-icon> Sửa
+              </button>
               <button class="btn btn-ghost btn-icon btn-sm" title="Mở chi tiết">
                 <v-icon size="15">mdi-arrow-right</v-icon>
               </button>
@@ -194,6 +200,14 @@
     </div>
 
     <PropertyImportDialog v-model="showImport" @imported="onImported" />
+
+    <!-- Form dùng chung: Thêm căn lẻ + Sửa nhanh từ dòng bảng -->
+    <PropertyFormDialog
+      v-model="showForm"
+      :mode="formMode"
+      :property="editingProperty"
+      @saved="onPropertySaved"
+    />
   </div>
 </template>
 
@@ -207,13 +221,17 @@ import {
   formatVndCompact,
   formatArea,
   type MasterOption,
+  type PropertyItem,
 } from '@/composables/use-properties';
 import { useProjects } from '@/composables/use-projects';
+import { useToast } from '@/composables/use-toast';
 import PropertyImportDialog from '@/components/properties/PropertyImportDialog.vue';
+import PropertyFormDialog from '@/components/properties/PropertyFormDialog.vue';
 
 const MAX_COMPARE = 4;
 
 const router = useRouter();
+const toast = useToast();
 const {
   properties,
   total,
@@ -229,6 +247,30 @@ const { projects, fetchProjects } = useProjects();
 
 const showImport = ref(false);
 const selectedIds = ref<string[]>([]);
+
+// ───────── Form dùng chung (Thêm căn lẻ / Sửa nhanh) ─────────
+const showForm = ref(false);
+const formMode = ref<'create' | 'edit'>('create');
+const editingProperty = ref<PropertyItem | null>(null);
+
+function openCreate() {
+  formMode.value = 'create';
+  editingProperty.value = null;
+  showForm.value = true;
+}
+
+function openEdit(p: PropertyItem) {
+  formMode.value = 'edit';
+  editingProperty.value = p;
+  showForm.value = true;
+}
+
+async function onPropertySaved() {
+  toast.success(formMode.value === 'edit' ? 'Đã cập nhật căn' : 'Đã thêm căn lẻ');
+  // Căn mới sort theo createdAt desc → về trang 1 để thấy; sửa thì giữ nguyên trang.
+  if (formMode.value === 'edit') await fetchProperties();
+  else await applyFilter({});
+}
 
 const typeOptions = ref<MasterOption[]>([]);
 const statusOptions = ref<MasterOption[]>([]);
@@ -398,6 +440,8 @@ function directionLabel(p: { directionCode: string | null; balconyDirectionCode:
 .table-card { overflow: auto; padding: 0; }
 .props-table th.right, .props-table td.right { text-align: right; }
 .props-table .col-chk { width: 36px; }
+.row-actions { text-align: right; white-space: nowrap; }
+.row-actions .btn { margin-left: 4px; }
 .props-table tbody tr.selected { background: var(--brand-softer); }
 .props-table .empty-cell { text-align: center; color: var(--ink-4); padding: 28px; }
 .chk { width: 15px; height: 15px; accent-color: var(--brand); cursor: pointer; }

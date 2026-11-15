@@ -36,6 +36,8 @@
 
       <!-- Pills row: trạng thái Zalo + status + role -->
       <div class="cdp-pills">
+        <!-- Mã KH (P2 2026-11-15) — hiển thị nếu backend trả customerCode -->
+        <span v-if="contact.customerCode" class="cdp-pill cdp-code" title="Mã KH kinh doanh">🏷 {{ contact.customerCode }}</span>
         <span class="zalo-pill" :class="zaloPillClass">{{ zaloPillText }}</span>
         <span v-if="(contact as any).displayStatus" class="cdp-pill" :style="statusPillStyle">
           {{ (contact as any).displayStatus.name }}
@@ -236,7 +238,7 @@ import PrivateBlur from '@/components/privacy/PrivateBlur.vue';
 const router = useRouter();
 
 const props = defineProps<{ contact: Contact }>();
-const emit = defineEmits<{ close: []; 'go-chat': []; saved: []; edit: [] }>();
+const emit = defineEmits<{ close: []; 'go-chat': []; saved: []; edit: []; appointment: [] }>();
 
 type TabKey = 'overview' | 'nicks' | 'chat' | 'appt' | 'notes';
 const activeTab = ref<TabKey>('nicks');
@@ -445,7 +447,9 @@ function apptStatusLabel(s: string): string {
   } as Record<string, string>)[s] || s;
 }
 
-function openAppointment() { emit('edit'); /* mở dialog nhắc hẹn — hiện tại reuse edit */ }
+// 2026-11-16: nút "📅 Đặt lịch hẹn" emit riêng 'appointment' (trước đây tái dùng 'edit' →
+// mở nhầm hồ sơ KH khi bấm Sửa được nối).
+function openAppointment() { emit('appointment'); }
 function addNote() { activeTab.value = 'notes'; /* TODO: focus textarea note */ }
 
 // M53 2026-05-30: Mở Virtual Chat cho KH no-Zalo
@@ -553,6 +557,7 @@ async function openVirtualChat() {
   background: #f1f5f9; color: #475569;
 }
 .cdp-tag { background: #fef3c7; color: #92400e; }
+.cdp-code { background: #eef2ff; color: #4338ca; font-family: ui-monospace, 'Cascadia Code', Menlo, monospace; }
 .cdp-role-primary { background: #eef0ff; color: #4f46e5; }
 .cdp-role-collab { background: #fef3c7; color: #92400e; }
 

@@ -43,7 +43,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { authMiddleware } from '../auth/auth-middleware.js';
 import { logActivity } from '../activity/activity-logger.js';
 import { logger } from '../../shared/utils/logger.js';
-import { seedMasterDataCategories } from './master-data-seed.js';
+import { seedMasterDataCategories, seedMasterDataItems } from './master-data-seed.js';
 import {
   listCategories,
   listItems,
@@ -73,9 +73,10 @@ export async function registerMasterDataRoutes(app: FastifyInstance): Promise<vo
   // ── GET /categories — danh sách nhóm danh mục (lazy seed) ──────────────
   app.get('/api/v1/settings/master-data/categories', async (request: FastifyRequest, reply: FastifyReply) => {
     const user = request.user!;
-    // Lazy-ensure 10 nhóm mặc định — idempotent, an toàn gọi mỗi request.
+    // Lazy-ensure 10 nhóm mặc định + item mặc định — idempotent, an toàn gọi mỗi request.
     try {
       await seedMasterDataCategories(user.orgId);
+      await seedMasterDataItems(user.orgId);
     } catch (err) {
       logger.error('[master-data] seed categories failed:', err);
       // Seed fail không chặn đọc — trả những gì đã có.
