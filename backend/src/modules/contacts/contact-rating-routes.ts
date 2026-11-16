@@ -17,6 +17,7 @@ import { authMiddleware } from '../auth/auth-middleware.js';
 import { requireGrant } from '../rbac/rbac-middleware.js';
 import { assertContactEditable, assertContactVisible } from './contact-scope.js';
 import { logActivity } from '../activity/activity-logger.js';
+import { logger } from '../../shared/utils/logger.js';
 
 const MAX_NOTE_LEN = 2000;
 
@@ -43,7 +44,8 @@ export async function registerContactRatingRoutes(app: FastifyInstance): Promise
       // Contact phải tồn tại trong org + user phải THẤY được
       const contact = await prisma.contact.findFirst({
         where: { id, orgId: user.orgId },
-        select: { id: true },
+        // ratingCode cũ để so sánh → ghi RatingHistory khi đổi hạng
+        select: { id: true, ratingCode: true },
       });
       if (!contact) {
         return reply.status(404).send({ error: 'Contact not found' });
@@ -120,6 +122,25 @@ export async function registerContactRatingRoutes(app: FastifyInstance): Promise
         entityId: id,
         details: { ratingCode: md.code, ratingNote, customerCode: updated.customerCode },
       });
+
+      // CRM hoàn chỉnh (2026-11-16): đổi hạng → ghi lịch sử (RatingHistory).
+      // Lỗi ghi history KHÔNG làm chết request — log warn rồi tiếp tục.
+      if (contact.ratingCode !== md.code) {
+        try {
+          await prisma.ratingHistory.create({
+            data: {
+              orgId: user.orgId,
+              contactId: id,
+              fromCode: contact.ratingCode ?? null,
+              toCode: md.code,
+              reason: ratingNote,
+              changedById: user.id,
+            },
+          });
+        } catch (historyErr) {
+          logger.warn('[contacts] rating route create rating history failed: %s', (historyErr as Error).message);
+        }
+      }
 
       return updated;
     },
