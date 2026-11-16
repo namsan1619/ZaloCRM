@@ -81,6 +81,10 @@ export async function cockpitRoutes(app: FastifyInstance): Promise<void> {
           totalInbound: true,
           totalOutbound: true,
           totalAppointments: true,
+          // CRM SĐT KH (2026-11-16): mã KH + đánh giá tay cho cột 4 tab CRM
+          customerCode: true,
+          ratingCode: true,
+          ratingNote: true,
           // Lead
           leadScore: true,
           // Assigned
@@ -156,6 +160,10 @@ export async function cockpitRoutes(app: FastifyInstance): Promise<void> {
             ? { at: contact.nextAppointment }
             : null,
         stuckSinceAggregate: contact.stuckSinceAggregate,
+        // CRM SĐT KH (2026-11-16): mã KH + đánh giá tay
+        customerCode: contact.customerCode,
+        ratingCode: contact.ratingCode,
+        ratingNote: contact.ratingNote,
         // Counters
         totalInbound: contact.totalInbound,
         totalOutbound: contact.totalOutbound,

@@ -221,19 +221,45 @@
 
       <!-- ══════ TAB 2: QUAN HỆ (per-nick) ══════ -->
       <div v-show="activeTab === 'crm'" class="tab-pane crm-tab">
-        <!-- Widget 1: Liên kết CRM (placeholder) -->
-        <section class="crm-widget crm-w-getfly">
+        <!-- Widget 1: Hồ sơ KH — mã KH, đánh giá, sale phụ trách, lịch hẹn kế -->
+        <section class="crm-widget crm-w-profile">
           <div class="crm-w-row">
-            <span class="crm-w-icon">🔗</span>
-            <span class="crm-w-title">Liên kết CRM</span>
+            <span class="crm-w-icon">🪪</span>
+            <span class="crm-w-title">Hồ sơ KH</span>
           </div>
-          <div class="crm-w-row crm-w-row-status">
-            <span v-if="cockpit?.getflyLink?.linked" class="getfly-pill ok">
-              ✅ GF-{{ cockpit.getflyLink.getflyId }}
-            </span>
-            <span v-else class="getfly-pill off">⚪ Chưa liên kết</span>
-            <button class="crm-btn-ghost" disabled title="Sẽ phát triển sau">Liên kết →</button>
+          <div class="crm-kv">
+            <div class="crm-kv-row">
+              <span class="crm-k">Mã KH</span>
+              <span class="crm-v" :title="customerCodeTitle">{{ customerCodeText }}</span>
+            </div>
+            <div class="crm-kv-row">
+              <span class="crm-k">Đánh giá</span>
+              <span class="crm-v">
+                <span
+                  v-if="ratingChip"
+                  class="master-chip"
+                  :style="ratingChipStyle"
+                  :title="ratingChip.label"
+                >{{ ratingChip.label }}</span>
+                <span v-else class="crm-v-muted">Chưa đánh giá</span>
+              </span>
+            </div>
+            <div class="crm-kv-row">
+              <span class="crm-k">Sale phụ trách</span>
+              <span class="crm-v">{{ cockpit?.assignedUser?.fullName || 'Chưa gán' }}</span>
+            </div>
+            <div class="crm-kv-row">
+              <span class="crm-k">Lịch hẹn kế</span>
+              <span class="crm-v">{{ nextAppointmentLabel }}</span>
+            </div>
           </div>
+          <button
+            class="crm-btn-ghost crm-btn-block"
+            :disabled="!props.contact?.id"
+            @click="openContactProfile"
+          >
+            Mở hồ sơ →
+          </button>
         </section>
 
         <!-- Widget 2: Next Action — AI suggestion -->
@@ -311,15 +337,86 @@
           </div>
         </section>
 
-        <!-- Widget 5: Sản phẩm quan tâm (placeholder) -->
+        <!-- Widget 5: Sản phẩm quan tâm — list + thêm + gợi ý -->
         <section class="crm-widget crm-w-interest">
           <div class="crm-w-row">
             <span class="crm-w-icon">🎯</span>
             <span class="crm-w-title">Sản phẩm quan tâm</span>
+            <button class="crm-w-refresh" :disabled="interestsLoading" title="Tải lại" @click="reloadInterests">↻</button>
           </div>
-          <div class="crm-w-placeholder">
-            <span class="ph-icon">ⓘ</span>
-            <span class="ph-text">Chức năng đang phát triển — sẽ tự gom nhu cầu từ KH cha + các nick chăm cùng KH này</span>
+
+          <!-- Danh sách quan tâm -->
+          <div v-if="interestsLoading && !interests.length" class="crm-w-loading">
+            <div class="crm-spinner" /><span>Đang tải...</span>
+          </div>
+          <div v-else-if="!interests.length" class="crm-w-empty">Chưa có sản phẩm quan tâm</div>
+          <ul v-else class="interest-list">
+            <li v-for="it in interests" :key="it.id" class="interest-row">
+              <label class="interest-check" title="Chọn để gửi bảng hàng qua Zalo">
+                <input
+                  type="checkbox"
+                  :checked="selectedInterestIds.has(it.id)"
+                  @change="toggleInterestSelection(it.id)"
+                />
+              </label>
+              <div class="interest-info">
+                <div class="interest-title">{{ interestTitle(it) }}</div>
+                <div class="interest-meta">
+                  <span class="master-chip master-chip-sm" :style="interestChipMap.get(it.id)?.style || {}">
+                    {{ interestChipMap.get(it.id)?.label || it.interestCode }}
+                  </span>
+                  <span v-if="it.property?.blockName" class="interest-sub">· {{ it.property.blockName }}</span>
+                </div>
+              </div>
+              <button class="interest-del" title="Xoá khỏi danh sách" @click="removeInterest(it)">×</button>
+            </li>
+          </ul>
+
+          <!-- Form thêm sản phẩm -->
+          <div class="interest-add">
+            <div class="interest-add-row">
+              <input
+                v-model="propertyQuery"
+                class="interest-search"
+                placeholder="Tìm mã căn / dự án…"
+                @input="onPropertyQueryInput"
+              />
+              <button class="crm-btn-ghost" :disabled="suggestionsLoading" title="Gợi ý căn phù hợp với KH" @click="loadSuggestions">
+                💡 Gợi ý
+              </button>
+            </div>
+
+            <div v-if="selectedProperty" class="interest-picked">
+              <span>✅ {{ propertyDisplay(selectedProperty) }}</span>
+              <button class="interest-del" title="Bỏ chọn" @click="clearSelectedProperty">×</button>
+            </div>
+
+            <div v-if="showPropertyDropdown && propertyResults.length" class="property-dropdown">
+              <button v-for="p in propertyResults" :key="p.id" class="property-opt" @click="pickProperty(p)">
+                {{ propertyDisplay(p) }}
+              </button>
+            </div>
+
+            <div v-if="suggestionsLoading" class="crm-w-loading">
+              <div class="crm-spinner" /><span>Đang tìm gợi ý...</span>
+            </div>
+            <div v-else-if="suggestions.length" class="suggest-list">
+              <div v-for="p in suggestions" :key="p.id" class="suggest-row">
+                <span class="suggest-info" :title="propertyDisplay(p)">{{ propertyDisplay(p) }}</span>
+                <button class="crm-btn-ghost" @click="pickProperty(p)">Chọn</button>
+              </div>
+            </div>
+
+            <div class="interest-add-row">
+              <select v-model="interestCode" class="interest-status">
+                <option value="">Trạng thái quan tâm…</option>
+                <option v-for="s in interestStatusItems" :key="s.code" :value="s.code">{{ s.label }}</option>
+              </select>
+              <button class="crm-btn-primary" :disabled="!canSaveInterest || interestsSaving" @click="saveInterest">
+                Lưu
+              </button>
+            </div>
+            <div v-if="interestsError" class="interest-error">{{ interestsError }}</div>
           </div>
         </section>
 
@@ -385,12 +482,37 @@
           <div v-else-if="cungChamList.length === 0" class="crm-w-empty">Chỉ mình bạn đang chăm KH này</div>
         </section>
 
-        <!-- Widget 7: Push to Getfly (placeholder) -->
+        <!-- Widget 7: Gửi bảng hàng qua Zalo (thay thế push Getfly) -->
         <section class="crm-widget crm-w-push">
-          <button class="crm-btn-push" disabled title="Sẽ phát triển sau">
-            📤 Đẩy thông tin KH lên Getfly CRM
+          <div class="crm-w-row">
+            <span class="crm-w-icon">📤</span>
+            <span class="crm-w-title">Gửi bảng hàng qua Zalo</span>
+            <span v-if="selectedCount" class="push-count">{{ selectedCount }} căn</span>
+          </div>
+
+          <div v-if="selectedInterests.length" class="push-preview">
+            <div v-for="it in selectedInterests" :key="it.id" class="push-preview-row">
+              {{ interestTitle(it) }}
+            </div>
+          </div>
+          <div v-else class="crm-w-empty">Chọn căn ở mục "Sản phẩm quan tâm" phía trên</div>
+
+          <textarea
+            v-model="broadcastText"
+            class="push-textarea"
+            rows="3"
+            :placeholder="DEFAULT_BROADCAST_TEXT"
+            :disabled="broadcastSending"
+          />
+
+          <button
+            class="crm-btn-primary push-send"
+            :disabled="!canSendBroadcast || broadcastSending"
+            @click="sendBroadcast"
+          >
+            {{ broadcastSending ? 'Đang gửi…' : '📤 Gửi' }}
           </button>
-          <div class="crm-w-hint">Chức năng đang phát triển</div>
+          <div v-if="!props.conversationId" class="crm-w-hint">Cần mở hội thoại với KH để gửi tin</div>
         </section>
       </div>
 
@@ -596,6 +718,9 @@ import ContactDealStageSelector from '@/components/chat/ContactDealStageSelector
 import { useAuthStore } from '@/stores/auth';
 import { useToast } from '@/composables/use-toast';
 import { api } from '@/api';
+import { useInterests, type ContactInterest, type InterestProperty } from '@/composables/use-interests';
+import { useMasterData } from '@/composables/use-master-data';
+import { formatInOrgTz } from '@/composables/use-org-timezone';
 // Icon top-tab — Lucide line (anh chốt 2026-06-08, đồng bộ bottom-tab SVG).
 import {
   User as UserIcon,
@@ -955,6 +1080,245 @@ const router = useRouter();
 const suggestText = ref('');
 const suggestLoading = ref(false);
 
+// ════════ Widget 1 + 5 + 7 — Hồ sơ KH / Sản phẩm quan tâm / Gửi bảng hàng (2026-11-16) ════════
+// Các ref CỦA WIDGET bắt buộc khai báo TRƯỚC watcher(props.contactId, {immediate:true}) bên dưới
+// vì watcher đó reset chúng ngay lúc setup (cùng lý do TDZ của suggestText bên trên).
+
+// MasterData cho chip màu — rating KH (TRANG_THAI_KH) + trạng thái quan tâm (TRANG_THAI_QUAN_TAM).
+const { itemsOf: masterItemsOf, fetchItems: fetchMasterItems } = useMasterData();
+const ratingItems = computed(() => masterItemsOf('TRANG_THAI_KH'));
+const interestStatusItems = computed(() => masterItemsOf('TRANG_THAI_QUAN_TAM'));
+
+// Cockpit bổ sung: customerCode/ratingCode/ratingNote là field BE mới — chưa trong CockpitData,
+// đọc qua cast để chống undefined (?? / ?. — không giả định BE trả).
+const cockpitExt = computed<{
+  customerCode?: string | null;
+  ratingCode?: string | null;
+  ratingNote?: string | null;
+}>(() => (cockpit.value ?? {}) as { customerCode?: string | null; ratingCode?: string | null; ratingNote?: string | null });
+
+const customerCodeText = computed(() => cockpitExt.value.customerCode || 'Chưa cấp mã');
+const customerCodeTitle = computed(() => cockpitExt.value.ratingNote || customerCodeText.value);
+
+const ratingChip = computed(() => {
+  const code = cockpitExt.value.ratingCode;
+  if (!code) return null;
+  const found = ratingItems.value.find((i) => i.code === code);
+  return found ? { label: found.label, color: found.color ?? null } : { label: code, color: null };
+});
+const ratingChipStyle = computed(() => masterChipStyle(ratingChip.value?.color ?? null));
+
+const nextAppointmentLabel = computed(() => {
+  const at = cockpit.value?.nextAppointment?.at;
+  if (!at) return 'Chưa có lịch hẹn';
+  const t = cockpit.value?.nextAppointment?.title;
+  const time = formatInOrgTz(at);
+  return t ? `${time} · ${t}` : time;
+});
+
+function openContactProfile() {
+  if (!props.contact?.id) return;
+  router.push({ name: 'ContactProfile', params: { id: props.contact.id } });
+}
+
+// ── Widget 5: Sản phẩm quan tâm ──
+const {
+  interests, suggestions, loading: interestsLoading, saving: interestsSaving,
+  error: interestsError, fetchInterests, createInterest, deleteInterest,
+  fetchSuggestions, searchProperties,
+} = useInterests();
+
+const propertyQuery = ref('');
+const propertyResults = ref<InterestProperty[]>([]);
+const showPropertyDropdown = ref(false);
+const selectedProperty = ref<InterestProperty | null>(null);
+const interestCode = ref('');
+const suggestionsLoading = ref(false);
+let propertySearchTimer: ReturnType<typeof setTimeout> | null = null;
+
+const canSaveInterest = computed(() => !!selectedProperty.value && !!interestCode.value);
+
+/** Map interestCode → label + màu chip (MasterData TRANG_THAI_QUAN_TAM). */
+const interestChipMap = computed(() => {
+  const map = new Map<string, { label: string; style: Record<string, string> }>();
+  for (const it of interests.value) {
+    const found = interestStatusItems.value.find((i) => i.code === it.interestCode);
+    map.set(
+      it.id,
+      found
+        ? { label: found.label, style: masterChipStyle(found.color ?? null) }
+        : { label: it.interestCode, style: {} },
+    );
+  }
+  return map;
+});
+
+// ── Widget 7: chọn căn + gửi bảng hàng qua Zalo ──
+const selectedInterestIds = reactive(new Set<string>());
+const selectedCount = computed(() => selectedInterestIds.size);
+const selectedInterests = computed(() => interests.value.filter((it) => selectedInterestIds.has(it.id)));
+
+const DEFAULT_BROADCAST_TEXT = 'Chào anh/chị, bên em gửi tham khảo mấy căn đang phù hợp với nhu cầu của mình ạ. Anh/chị xem giúp em nhé!';
+const broadcastText = ref(DEFAULT_BROADCAST_TEXT);
+const broadcastSending = ref(false);
+
+const canSendBroadcast = computed(
+  () => selectedInterests.value.length > 0 && !!props.conversationId,
+);
+
+// Chip màu từ MasterData color (hỗ trợ hex 3/6 ký tự) — nền/border tint + chữ màu gốc.
+function masterChipStyle(color: string | null | undefined): Record<string, string> {
+  if (!color) return {};
+  const hex = color.trim();
+  if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) return {};
+  const full = hex.length === 4
+    ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`
+    : hex;
+  return {
+    background: `${full}1f`,
+    borderColor: `${full}59`,
+    color: full,
+  };
+}
+
+function interestTitle(it: ContactInterest): string {
+  const p = it.property;
+  if (p?.unitCode) {
+    const proj = p.project?.name || it.project?.name;
+    return proj ? `${p.unitCode} · ${proj}` : p.unitCode;
+  }
+  return it.project?.name || 'Khác';
+}
+
+function propertyDisplay(p: InterestProperty): string {
+  const proj = p.project?.name ? ` · ${p.project.name}` : '';
+  const extra = [p.blockName, p.bedrooms != null ? `${p.bedrooms}PN` : null]
+    .filter((x): x is string => !!x)
+    .join(' · ');
+  return `${p.unitCode}${proj}${extra ? ` — ${extra}` : ''}`;
+}
+
+function onPropertyQueryInput() {
+  if (propertySearchTimer) clearTimeout(propertySearchTimer);
+  const q = propertyQuery.value;
+  if (!q.trim()) {
+    propertyResults.value = [];
+    showPropertyDropdown.value = false;
+    return;
+  }
+  propertySearchTimer = setTimeout(async () => {
+    propertyResults.value = await searchProperties(q, 8);
+    showPropertyDropdown.value = true;
+  }, 300);
+}
+
+function pickProperty(p: InterestProperty) {
+  selectedProperty.value = p;
+  propertyQuery.value = '';
+  propertyResults.value = [];
+  showPropertyDropdown.value = false;
+}
+
+function clearSelectedProperty() {
+  selectedProperty.value = null;
+}
+
+async function saveInterest() {
+  if (!props.contactId || !selectedProperty.value || !interestCode.value) return;
+  const created = await createInterest(props.contactId, {
+    propertyId: selectedProperty.value.id,
+    interestCode: interestCode.value,
+    source: 'manual',
+  });
+  if (created) {
+    toast.success('Đã thêm sản phẩm quan tâm');
+    clearSelectedProperty();
+    interestCode.value = '';
+  } else {
+    toast.error(interestsError.value || 'Không thêm được sản phẩm quan tâm');
+  }
+}
+
+async function removeInterest(it: ContactInterest) {
+  const label = interestTitle(it);
+  if (!window.confirm(`Xoá "${label}" khỏi danh sách quan tâm?`)) return;
+  const ok = await deleteInterest(it.id);
+  if (ok) {
+    toast.success('Đã xoá sản phẩm quan tâm');
+    selectedInterestIds.delete(it.id);
+  } else {
+    toast.error(interestsError.value || 'Không xoá được sản phẩm');
+  }
+}
+
+async function reloadInterests() {
+  if (props.contactId) await fetchInterests(props.contactId);
+}
+
+async function loadSuggestions() {
+  if (!props.contactId) return;
+  suggestionsLoading.value = true;
+  try {
+    await fetchSuggestions(props.contactId, 5);
+  } finally {
+    suggestionsLoading.value = false;
+  }
+}
+
+function toggleInterestSelection(id: string) {
+  if (selectedInterestIds.has(id)) selectedInterestIds.delete(id);
+  else selectedInterestIds.add(id);
+}
+
+function buildBroadcastContent(): string {
+  const saleNote = broadcastText.value.trim() || DEFAULT_BROADCAST_TEXT;
+  const lines = selectedInterests.value.map((it, idx) => {
+    const p = it.property;
+    let head = p?.unitCode || it.project?.name || 'Căn';
+    const proj = p?.project?.name || it.project?.name;
+    if (proj) head += ` (${proj})`;
+    const extra = [p?.blockName, p?.bedrooms != null ? `${p.bedrooms}PN` : null]
+      .filter((x): x is string => !!x)
+      .join(' · ');
+    return `${idx + 1}. ${head}${extra ? ` — ${extra}` : ''}`;
+  });
+  return `${saleNote}\n\n📋 Bảng hàng tham khảo:\n${lines.join('\n')}`;
+}
+
+async function sendBroadcast() {
+  if (!props.conversationId || !selectedInterests.value.length || broadcastSending.value) return;
+  broadcastSending.value = true;
+  try {
+    // Gửi tin thật vào hội thoại đang mở (endpoint CE dùng chung với MessageThread composer).
+    await api.post(`/conversations/${props.conversationId}/messages`, { content: buildBroadcastContent() });
+    // Sau khi gửi: ghi nhận các căn đã chọn là interest nguồn zalo_chat nếu chưa tồn tại
+    // trong list hiện có (tránh trùng propertyId).
+    const contactId = props.contactId;
+    if (contactId) {
+      for (const it of selectedInterests.value) {
+        if (!it.propertyId) continue;
+        const exists = interests.value.some((x) => x.propertyId && x.propertyId === it.propertyId);
+        if (!exists) {
+          await createInterest(contactId, {
+            propertyId: it.propertyId,
+            interestCode: it.interestCode,
+            source: 'zalo_chat',
+          });
+        }
+      }
+      await fetchInterests(contactId);
+    }
+    toast.success('Đã gửi bảng hàng qua Zalo');
+    selectedInterestIds.clear();
+    broadcastText.value = DEFAULT_BROADCAST_TEXT;
+  } catch (err) {
+    const msg = (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Gửi tin thất bại';
+    toast.error(msg);
+  } finally {
+    broadcastSending.value = false;
+  }
+}
+
 // Khi đổi sang contact mới, reset về tab Hồ sơ + refetch relations
 // (NotesSection tự fetch khi prop contactId đổi).
 // Cũng force reset infoExpanded + start countdown — nếu activeTab đã = 'profile',
@@ -974,6 +1338,16 @@ watch(() => props.contactId, (id) => {
   }
   // Reset suggest text
   suggestText.value = '';
+  // Reset widget 5/7 (form + chọn căn + lời nhắn) khi đổi KH — không mang sang KH mới.
+  selectedInterestIds.clear();
+  propertyQuery.value = '';
+  propertyResults.value = [];
+  showPropertyDropdown.value = false;
+  selectedProperty.value = null;
+  interestCode.value = '';
+  suggestions.value = [];
+  broadcastText.value = DEFAULT_BROADCAST_TEXT;
+  broadcastSending.value = false;
 }, { immediate: true });
 
 function relativeTime(dateStr: string) {
@@ -998,7 +1372,11 @@ watch([activeTab, () => props.contactId], async ([tab, id]) => {
     await Promise.all([
       fetchCockpit(id),
       fetchTeammates(id, props.activeZaloAccountId || undefined),
+      fetchInterests(id),
     ]);
+    // MasterData cho chip màu (rating KH + trạng thái quan tâm) — best-effort, không chặn render.
+    void fetchMasterItems('TRANG_THAI_KH');
+    void fetchMasterItems('TRANG_THAI_QUAN_TAM');
     // Auto-fetch AI suggestion nếu chưa có
     if (!suggestText.value && props.conversationId) {
       void runAiSuggest();
@@ -1886,15 +2264,50 @@ async function onRegenerateHandoff() {
   padding: 4px 0;
 }
 
-/* ── Widget 1: Getfly link ── */
-.getfly-pill {
-  font-size: 11.5px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-weight: 600;
+/* ── Widget 1: Hồ sơ KH ── */
+.crm-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.getfly-pill.ok { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-.getfly-pill.off { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.crm-kv-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.crm-kv-row .crm-k {
+  color: var(--smax-grey-700);
+  min-width: 82px;
+  flex-shrink: 0;
+}
+.crm-kv-row .crm-v {
+  color: var(--smax-text);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crm-v-muted { color: var(--smax-grey-500); font-style: italic; font-weight: 400; }
+
+/* Chip MasterData — màu lấy từ danh mục (runtime style) */
+.master-chip {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.master-chip-sm { font-size: 10px; padding: 1px 6px; }
+
 .crm-btn-ghost {
   background: #fff;
   border: 1px solid var(--smax-grey-300);
@@ -1903,9 +2316,11 @@ async function onRegenerateHandoff() {
   font-size: 11.5px;
   cursor: pointer;
   color: var(--smax-grey-700);
+  flex-shrink: 0;
 }
 .crm-btn-ghost:hover:not(:disabled) { background: var(--smax-grey-100); }
 .crm-btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+.crm-btn-block { width: 100%; }
 
 /* ── Widget 2: AI suggest ── */
 .crm-suggest-box {
@@ -1994,19 +2409,138 @@ async function onRegenerateHandoff() {
 .tl-appt { color: #065f46; font-weight: 600; }
 .tl-appt-rel { font-weight: 500; color: var(--smax-grey-600); }
 
-/* ── Widget 5: Placeholder interest ── */
-.crm-w-placeholder {
+/* ── Widget 5: Sản phẩm quan tâm ── */
+.interest-list {
   display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  font-size: 11.5px;
-  color: var(--smax-grey-600);
-  background: var(--smax-grey-100);
-  border-radius: 7px;
-  padding: 7px 9px;
-  line-height: 1.45;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
-.ph-icon { font-style: italic; color: var(--smax-grey-500); flex-shrink: 0; }
+.interest-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 6px 8px;
+  background: #fafbfc;
+  border: 1px solid var(--smax-grey-200);
+  border-radius: 7px;
+}
+.interest-check {
+  display: flex;
+  align-items: center;
+  padding-top: 2px;
+  cursor: pointer;
+}
+.interest-check input { cursor: pointer; margin: 0; }
+.interest-info { flex: 1; min-width: 0; }
+.interest-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--smax-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.interest-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+}
+.interest-sub { font-size: 10.5px; color: var(--smax-grey-600); }
+.interest-del {
+  background: none;
+  border: none;
+  color: var(--smax-grey-500);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 3px;
+  flex-shrink: 0;
+}
+.interest-del:hover { color: var(--smax-danger, #e53935); }
+
+.interest-add { display: flex; flex-direction: column; gap: 6px; }
+.interest-add-row { display: flex; gap: 6px; align-items: center; }
+.interest-search {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--smax-grey-300);
+  border-radius: 7px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  font-family: inherit;
+  color: var(--smax-text);
+}
+.interest-search:focus { outline: none; border-color: var(--smax-primary); }
+.interest-status {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--smax-grey-300);
+  border-radius: 7px;
+  padding: 4px 6px;
+  font-size: 11.5px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--smax-text);
+}
+.interest-picked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11.5px;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 7px;
+  padding: 4px 8px;
+}
+.property-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--smax-grey-200);
+  border-radius: 7px;
+  background: #fff;
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 3px;
+}
+.property-opt {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 7px;
+  font-size: 11.5px;
+  color: var(--smax-text);
+  cursor: pointer;
+  font-family: inherit;
+}
+.property-opt:hover { background: var(--smax-primary-soft); }
+.suggest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px dashed var(--smax-grey-300);
+  border-radius: 7px;
+  padding: 5px;
+}
+.suggest-row { display: flex; align-items: center; gap: 6px; }
+.suggest-info {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--smax-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.interest-error { font-size: 10.5px; color: var(--smax-danger, #e53935); }
 
 /* ── Widget 6: Đồng đội ── */
 .team-banner {
@@ -2138,17 +2672,47 @@ async function onRegenerateHandoff() {
 .crm-btn-handoff:hover:not(:disabled) { filter: brightness(1.05); }
 .crm-btn-handoff:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* ── Widget 7: Push Getfly ── */
-.crm-btn-push {
-  background: #f8fafc;
-  border: 1px dashed #94a3b8;
-  border-radius: 8px;
-  padding: 10px;
-  font-size: 12px;
-  color: var(--smax-grey-600);
-  cursor: not-allowed;
-  width: 100%;
+/* ── Widget 7: Gửi bảng hàng qua Zalo ── */
+.push-count {
+  font-size: 10px;
+  font-weight: 700;
+  background: #eef2ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  padding: 1px 7px;
+  flex-shrink: 0;
 }
+.push-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  border-radius: 7px;
+  padding: 6px 8px;
+}
+.push-preview-row {
+  font-size: 11px;
+  color: #312e81;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.push-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 62px;
+  border: 1px solid var(--smax-grey-300);
+  border-radius: 7px;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  font-family: inherit;
+  color: var(--smax-text);
+}
+.push-textarea:focus { outline: none; border-color: var(--smax-primary); }
+.push-send { width: 100%; align-self: stretch; }
 .crm-w-hint {
   font-size: 10.5px;
   color: var(--smax-grey-500);

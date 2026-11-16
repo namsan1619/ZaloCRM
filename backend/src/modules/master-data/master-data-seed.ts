@@ -42,6 +42,7 @@ export const DEFAULT_MASTER_DATA_CATEGORIES: DefaultCategorySeed[] = [
   // ── Nhóm bổ sung (UI/backend dùng) ──
   { key: 'CO_CHE_DAC_BIET', label: 'Cơ chế đặc biệt', icon: 'mdi-star-circle-outline', sortOrder: 110 },
   { key: 'KEHOACH', label: 'Kênh chiến dịch', icon: 'mdi-bullhorn-outline', sortOrder: 120 },
+  { key: 'TRANG_THAI_QUAN_TAM', label: 'Trạng thái quan tâm', icon: 'mdi-heart-outline', sortOrder: 130 },
 ];
 
 export interface SeedMasterDataCategoriesResult {
@@ -145,6 +146,13 @@ export const DEFAULT_MASTER_DATA_ITEMS: DefaultItemSeed[] = [
   { categoryKey: 'KEHOACH', code: 'tiktok', label: 'TikTok', sortOrder: 30 },
   { categoryKey: 'KEHOACH', code: 'sms', label: 'SMS', sortOrder: 40 },
   { categoryKey: 'KEHOACH', code: 'call', label: 'Gọi điện', sortOrder: 50 },
+
+  // ── Trạng thái quan tâm (ContactInterest.interestCode) ──
+  { categoryKey: 'TRANG_THAI_QUAN_TAM', code: 'RAT_QUAN_TAM', label: 'Rất quan tâm', sortOrder: 10, color: '#16a34a' },
+  { categoryKey: 'TRANG_THAI_QUAN_TAM', code: 'QUAN_TAM', label: 'Quan tâm', sortOrder: 20, color: '#f59e0b' },
+  { categoryKey: 'TRANG_THAI_QUAN_TAM', code: 'TIM_HIEU', label: 'Đang tìm hiểu', sortOrder: 30, color: '#3b82f6' },
+  { categoryKey: 'TRANG_THAI_QUAN_TAM', code: 'DA_MUA', label: 'Đã mua', sortOrder: 40, color: '#64748b' },
+  { categoryKey: 'TRANG_THAI_QUAN_TAM', code: 'KHONG_CON', label: 'Không còn quan tâm', sortOrder: 50, color: '#64748b' },
 ];
 
 /**

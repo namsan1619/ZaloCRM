@@ -1240,6 +1240,28 @@ export async function contactRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
+      // CRM SĐT KH (2026-11-16): đổi mức đánh giá tay → ghi lịch sử (RatingHistory).
+      // Lỗi ghi history KHÔNG được làm chết request chính — log warn rồi tiếp tục.
+      if (updated.ratingCode && existing.ratingCode !== updated.ratingCode) {
+        try {
+          await prisma.ratingHistory.create({
+            data: {
+              orgId: user.orgId,
+              contactId: updated.id,
+              fromCode: existing.ratingCode ?? null,
+              toCode: updated.ratingCode,
+              reason: updated.ratingNote ?? null,
+              changedById: user.id,
+            },
+          });
+        } catch (historyErr) {
+          logger.warn(
+            '[contacts] create rating history failed: %s',
+            (historyErr as Error).message,
+          );
+        }
+      }
+
       if (existing.status !== updated.status) {
         const org = await prisma.organization.findUnique({
           where: { id: user.orgId },

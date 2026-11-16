@@ -118,6 +118,21 @@ export const ACTION_CATEGORY: Record<string, ActivityCategory> = {
   campaign_deleted: 'system',
   campaign_status_change: 'system',
 
+  // system — Đợt chạy chiến dịch thật + kịch bản (2026-11-16)
+  campaign_run_created: 'system',
+  campaign_run_started: 'system',
+  campaign_run_paused: 'system',
+  campaign_run_resumed: 'system',
+  campaign_run_cancelled: 'system',
+  campaign_script_created: 'system',
+  campaign_script_updated: 'system',
+  campaign_script_deleted: 'system',
+
+  // customer_info — Sản phẩm KH quan tâm (2026-11-16)
+  interest_created: 'customer_info',
+  interest_updated: 'customer_info',
+  interest_deleted: 'customer_info',
+
   // automation
   bot_tag_auto: 'automation',
   bot_score_calc: 'automation',

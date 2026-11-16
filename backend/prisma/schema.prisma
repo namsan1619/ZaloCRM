@@ -60,6 +60,12 @@ model Organization {
   groupScans                  GroupScan[]
   friendshipAttempts          FriendshipAttempt[]
   friends                     Friend[]
+  // P0 CRM môi giới (2026-11-16)
+  contactInterests            ContactInterest[]
+  campaignScripts             CampaignScript[]
+  campaignRuns                CampaignRun[]
+  campaignContacts            CampaignContact[]
+  ratingHistories             RatingHistory[]
   statuses                    Status[]
   parentCandidates            ParentCandidate[]
   notes                       Note[]
@@ -437,6 +443,8 @@ model ZaloAccount {
   // 2026-06-21 (E1 quét group) — roster member quét ra + lịch sử lần quét per-nick.
   groupMembers                     GroupMember[]
   groupScans                       GroupScan[]
+  // P0 CRM môi giới (2026-11-16) — nick tham gia đợt chạy chiến dịch
+  campaignContacts                 CampaignContact[]
 
   @@map("zalo_accounts")
 }
@@ -652,6 +660,10 @@ model Contact {
   contactNotes      Note[]
   // CRM SĐT KH — dòng import đã tạo/trùng với KH này
   importRows        ContactImportRow[]
+  // P0 CRM môi giới (2026-11-16)
+  interests         ContactInterest[]
+  ratingHistories   RatingHistory[]
+  campaignContacts  CampaignContact[]
   // Phase 7 — Automation framework
   // automationTasks   AutomationTask[]  ← REMOVED 2026-06-01 Luồng Mục Tiêu M0
   // Phase Lead Pool 2026-05-24
@@ -4216,6 +4228,7 @@ model Project {
 
   org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   properties Property[]
+  interests  ContactInterest[]
 
   @@unique([orgId, name])
   @@map("projects")
@@ -4282,6 +4295,7 @@ model Property {
   project  Project        @relation(fields: [projectId], references: [id], onDelete: Restrict)
   agency   Agency?        @relation(fields: [agencyId], references: [id], onDelete: SetNull)
   media    PropertyMedia[]
+  interests ContactInterest[]
 
   @@unique([orgId, projectId, unitCode])
   @@index([orgId, projectId, statusCode])
@@ -4328,6 +4342,8 @@ model Campaign {
   org           Organization           @relation(fields: [orgId], references: [id], onDelete: Cascade)
   customerLists CampaignCustomerList[]
   projects      CampaignProject[]
+  runs          CampaignRun[]
+  runContacts   CampaignContact[]
 
   @@index([orgId, status])
   @@index([orgId, startAt, endAt])
@@ -4356,4 +4372,149 @@ model CampaignProject {
 
   @@unique([campaignId, projectId])
   @@map("campaign_projects")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P0 — CRM môi giới Vinhomes (2026-11-16): 5 bảng bổ sung cho CRM hoàn chỉnh.
+//   ContactInterest — sản phẩm KH quan tâm (tab CRM chat + gợi ý căn)
+//   CampaignScript  — kịch bản tin nhắn chiến dịch (friend_request/greeting/care)
+//   CampaignRun     — đợt chạy chiến dịch thật (kết bạn / chăm sóc)
+//   CampaignContact — trạng thái per-KH trong đợt chạy
+//   RatingHistory   — lịch sử đánh giá KH (A/B/C/D theo thời gian)
+// Pacing tự động qua SdkLimit (zaloRateLimiter chặn tại zaloOps.exec).
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ContactInterest {
+  id           String   @id @default(uuid()) @map("id")
+  orgId        String   @map("org_id")
+  contactId    String   @map("contact_id")
+  propertyId   String?  @map("property_id") // căn quan tâm (1 trong 2)
+  projectId    String?  @map("project_id") // hoặc dự án quan tâm
+  interestCode String   @default("QUAN_TAM") @map("interest_code") // MasterData TRANG_THAI_QUAN_TAM
+  note         String?  @map("note")
+  source       String?  @map("source") // manual | zalo_chat | campaign | suggestion
+  createdById  String?  @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contact  Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  property Property?    @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  project  Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, contactId])
+  @@index([orgId, propertyId])
+  @@index([orgId, projectId])
+  @@index([orgId, interestCode])
+  @@map("contact_interests")
+}
+
+model CampaignScript {
+  id          String   @id @default(uuid()) @map("id")
+  orgId       String   @map("org_id")
+  name        String   @map("name")
+  kind        String   @map("kind") // friend_request | greeting | care
+  content     String   @map("content") @db.Text // hỗ trợ biến {{ten}} {{so_dien_thoai}} {{du_an}}
+  mediaUrls   Json     @default("[]") @map("media_urls") // fileUrls ảnh/PDF bảng hàng
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String?  @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, name])
+  @@index([orgId, kind, isActive])
+  @@map("campaign_scripts")
+}
+
+model CampaignRun {
+  id                      String    @id @default(uuid()) @map("id")
+  orgId                   String    @map("org_id")
+  campaignId              String    @map("campaign_id")
+  name                    String    @map("name") // tên đợt chạy — user tự đặt
+  mode                    String    @default("friend_request") @map("mode") // friend_request | care
+  status                  String    @default("DRAFT") @map("status") // DRAFT | RUNNING | PAUSED | DONE | CANCELLED | FAILED
+  zaloAccountIds          Json      @default("[]") @map("zalo_account_ids") // nick tham gia
+  dailyFriendRequestLimit Int?      @map("daily_friend_request_limit") // user tự đặt; null = theo SdkLimit
+  greetingScriptId        String?   @map("greeting_script_id") // CampaignScript.id (send khi KB mặc định)
+  greetingScriptText      String?   @map("greeting_script_text") // snapshot lúc tạo
+  careScriptIds           Json      @default("[]") @map("care_script_ids") // [CampaignScript.id] chuỗi chăm sóc
+  careIntervalDays        Int?      @map("care_interval_days")
+  configuredTotal         Int       @default(0) @map("configured_total")
+  queuedCount             Int       @default(0) @map("queued_count")
+  sentCount               Int       @default(0) @map("sent_count")
+  acceptedCount           Int       @default(0) @map("accepted_count")
+  repliedCount            Int       @default(0) @map("replied_count")
+  noZaloCount             Int       @default(0) @map("no_zalo_count")
+  failedCount             Int       @default(0) @map("failed_count")
+  skippedCount            Int       @default(0) @map("skipped_count")
+  startedAt               DateTime? @map("started_at")
+  pausedAt                DateTime? @map("paused_at")
+  finishedAt              DateTime? @map("finished_at")
+  createdById             String?   @map("created_by_id")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  org      Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  campaign Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contacts CampaignContact[]
+
+  @@index([orgId, status])
+  @@index([campaignId, status])
+  @@index([orgId, campaignId, createdAt(sort: Desc)])
+  @@map("campaign_runs")
+}
+
+model CampaignContact {
+  id            String    @id @default(uuid()) @map("id")
+  orgId         String    @map("org_id")
+  campaignId    String    @map("campaign_id")
+  runId         String    @map("run_id")
+  contactId     String    @map("contact_id")
+  zaloAccountId String?   @map("zalo_account_id") // nick được giao
+  state         String    @default("queued") @map("state")
+  // queued | friend_request_sent | no_zalo | skipped | failed
+  // | friend_request_accepted | greeting_sent | care_sent | replied
+  attemptId   String?   @map("attempt_id") // FriendshipAttempt.id
+  errorCode   String?   @map("error_code")
+  errorDetail String?   @map("error_detail")
+  scheduledAt DateTime? @map("scheduled_at")
+  sentAt      DateTime? @map("sent_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  repliedAt   DateTime? @map("replied_at")
+  lastCareAt  DateTime? @map("last_care_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  campaign    Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  run         CampaignRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  contact     Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  zaloAccount ZaloAccount? @relation(fields: [zaloAccountId], references: [id], onDelete: SetNull)
+
+  @@unique([runId, contactId])
+  @@index([orgId, state])
+  @@index([runId, state])
+  @@index([orgId, contactId, campaignId])
+  @@map("campaign_contacts")
+}
+
+model RatingHistory {
+  id          String    @id @default(uuid()) @map("id")
+  orgId       String    @map("org_id")
+  contactId   String    @map("contact_id")
+  fromCode    String?   @map("from_code")
+  toCode      String    @map("to_code")
+  reason      String?   @map("reason")
+  changedById String?   @map("changed_by_id")
+  changedAt   DateTime  @default(now()) @map("changed_at")
+  campaignId  String?   @map("campaign_id") // ghi nhận nếu đổi rating do chiến dịch
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  contact Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, contactId, changedAt(sort: Desc)])
+  @@index([orgId, campaignId])
+  @@map("rating_histories")
 }

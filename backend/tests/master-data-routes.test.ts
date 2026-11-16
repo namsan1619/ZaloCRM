@@ -93,7 +93,7 @@ describe('GET /api/v1/settings/master-data/categories', () => {
     const res = await buildApp().inject({ method: 'GET', url: URL });
     expect(res.statusCode).toBe(200);
     const body = JSON.parse(res.body);
-    expect(body.categories).toHaveLength(12);
+    expect(body.categories).toHaveLength(13);
     expect(body.categories[0].key).toBe('NGUON_KH');
     expect(prismaMock.masterDataCategory.create).not.toHaveBeenCalled();
     // Scoped theo org
@@ -101,7 +101,7 @@ describe('GET /api/v1/settings/master-data/categories', () => {
     expect(where.orgId).toBe('org-1');
   });
 
-  it('org mới: lazy-seed 12 nhóm mặc định (idempotent)', async () => {
+  it('org mới: lazy-seed 13 nhóm mặc định (idempotent)', async () => {
     prismaMock.masterDataCategory.findMany.mockResolvedValue([]);
     prismaMock.masterDataCategory.create.mockImplementation(async (args: any) => ({
       id: 'new-' + args.data.key, ...args.data,
@@ -110,11 +110,11 @@ describe('GET /api/v1/settings/master-data/categories', () => {
 
     const res = await buildApp().inject({ method: 'GET', url: URL });
     expect(res.statusCode).toBe(200);
-    // 12 nhóm chuẩn được seed
-    expect(prismaMock.masterDataCategory.create).toHaveBeenCalledTimes(12);
+    // 13 nhóm chuẩn được seed
+    expect(prismaMock.masterDataCategory.create).toHaveBeenCalledTimes(13);
     const keys = prismaMock.masterDataCategory.create.mock.calls.map((c) => c[0].data.key);
     expect(keys).toEqual(
-      expect.arrayContaining(['NGUON_KH', 'LOAI_CAN', 'HUONG', 'VIEW', 'BAN_GIAO', 'NOI_THAT', 'DAI_LY', 'TRANG_THAI_CAN', 'TRANG_THAI_KH', 'PHAPLY', 'CO_CHE_DAC_BIET', 'KEHOACH']),
+      expect.arrayContaining(['NGUON_KH', 'LOAI_CAN', 'HUONG', 'VIEW', 'BAN_GIAO', 'NOI_THAT', 'DAI_LY', 'TRANG_THAI_CAN', 'TRANG_THAI_KH', 'PHAPLY', 'CO_CHE_DAC_BIET', 'KEHOACH', 'TRANG_THAI_QUAN_TAM']),
     );
     // isSystem = true cho nhóm mặc định
     expect(prismaMock.masterDataCategory.create.mock.calls[0][0].data.isSystem).toBe(true);

@@ -119,6 +119,8 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       // Facebook Lead Ads item → extension bundle (eeSettingsItems.channels).
       // Automation tech-settings nav item → extension bundle (eeSettingsItems.channels).
       { id: 'integrations', label: 'Tích hợp 3rd party', icon: 'mdi-puzzle-outline', route: '/settings/channels/integrations', permission: 'admin', resource: 'settings', aliases: ['tích hợp', 'integration', '3rd party'] },
+      // P0 CRM 2026-11-16 — Kịch bản tin nhắn cho đợt chạy chiến dịch (agent FE-B).
+      { id: 'campaign-scripts', label: 'Kịch bản tin nhắn', icon: 'mdi-script-text-outline', route: '/settings/campaign-scripts', permission: 'admin', resource: 'settings', aliases: ['kịch bản', 'script', 'campaign script', 'kịch bản chiến dịch', 'tin nhắn mẫu', 'chăm sóc', 'care', 'kết bạn', 'friend request'] },
     ],
   },
 

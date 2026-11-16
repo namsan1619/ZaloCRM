@@ -61,6 +61,11 @@ import { projectRoutes } from './modules/properties/project-routes.js';
 import { agencyRoutes } from './modules/properties/agency-routes.js';
 import { propertyImportRoutes } from './modules/properties/property-import-routes.js';
 import { campaignRoutes, campaignTrackerRoutes } from './modules/campaign/campaign-routes.js';
+import { registerInterestRoutes } from './modules/interests/interest-routes.js';
+import { registerRatingHistoryRoutes } from './modules/contacts/rating-history-routes.js';
+import { registerCampaignScriptRoutes } from './modules/campaign/campaign-script-routes.js';
+import { registerCampaignExecRoutes } from './modules/campaign/campaign-exec-routes.js';
+import { registerBrokerDashboardRoutes } from './modules/dashboard/broker-dashboard-routes.js';
 import { crmTagGroupRoutes } from './modules/contacts/crm-tag-group-routes.js';
 import { userPreferenceRoutes } from './modules/auth/user-preference-routes.js';
 import { timelineRoutes } from './modules/activity/timeline-routes.js';
@@ -290,6 +295,12 @@ async function bootstrap() {
   await app.register(propertyImportRoutes);
   await app.register(campaignRoutes);
   await app.register(campaignTrackerRoutes);
+  // ── CRM hoàn chỉnh môi giới (2026-11-16) ──────────────────────────────────
+  await app.register(registerInterestRoutes);
+  await app.register(registerRatingHistoryRoutes);
+  await app.register(registerCampaignScriptRoutes);
+  await app.register(registerCampaignExecRoutes);
+  await app.register(registerBrokerDashboardRoutes);
   await app.register(contactSubResourceRoutes);
   await app.register(cockpitRoutes);
   await app.register(appointmentRoutes);
@@ -431,6 +442,8 @@ async function bootstrap() {
       try {
         const { startContactImportWorker } = await import('./modules/contacts/contact-import-worker.js');
         startContactImportWorker();
+        const { startCampaignExecWorker } = await import('./modules/campaign/campaign-exec-worker.js');
+        startCampaignExecWorker();
       } catch (err) {
         logger.warn('contact-import-worker start failed: %o', err);
       }
