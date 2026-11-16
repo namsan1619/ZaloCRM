@@ -173,6 +173,32 @@
                     <span class="k">Nguồn khách</span>
                     <span class="v"><input v-model="form.source" class="cpd-in" placeholder="vd Facebook, Tổng đài…" /></span>
                   </div>
+                  <!-- Đánh giá KH (A/B/C/D) — danh mục TRANG_THAI_KH, lưu Contact.ratingCode -->
+                  <div class="kv">
+                    <span class="k">Đánh giá KH</span>
+                    <span class="v">
+                      <select v-model="form.ratingCode" class="cpd-in">
+                        <option :value="null">— Chưa đánh giá —</option>
+                        <option v-for="r in ratingOptions" :key="r.code" :value="r.code">
+                          {{ r.label }}
+                        </option>
+                      </select>
+                    </span>
+                  </div>
+                  <div class="kv">
+                    <span class="k">Ghi chú đánh giá</span>
+                    <span class="v">
+                      <input v-model="form.ratingNote" class="cpd-in" placeholder="vd Khách quan tâm 2PN, cần vốn vay…" />
+                    </span>
+                  </div>
+                  <!-- Mã KH (hệ thống cấp — chỉ hiển thị) -->
+                  <div v-if="!isCreate" class="kv">
+                    <span class="k">Mã KH</span>
+                    <span class="v">
+                      <span v-if="c?.customerCode" class="num">{{ c.customerCode }}</span>
+                      <span v-else class="empty">—</span>
+                    </span>
+                  </div>
                   <div class="kv kv-tag">
                     <span class="k">Tag CRM <span v-if="!isCreate" class="agg">theo nick</span></span>
                     <span class="v">
@@ -439,6 +465,7 @@ import { formatRecentDateTime, cleanPreview } from '@/composables/use-contacts';
 import PrivateBlur from '@/components/privacy/PrivateBlur.vue';
 import TagCrmBar from '@/components/chat/TagCrmBar.vue';
 import { TEMPLATE_VARIABLES } from '@/constants/template-variables';
+import { useMasterData } from '@/composables/use-master-data';
 import type { Contact } from '@/composables/use-contacts';
 
 const props = withDefaults(defineProps<{
@@ -461,6 +488,10 @@ const emit = defineEmits<{
 }>();
 
 const isCreate = computed(() => props.mode === 'create');
+
+// Đánh giá KH (A/B/C/D) — danh mục MasterData TRANG_THAI_KH, tự thêm/sửa ở /settings/crm/options.
+const { itemsOf: itemsOfMaster, fetchItems: fetchMasterItems } = useMasterData();
+const ratingOptions = computed(() => itemsOfMaster('TRANG_THAI_KH'));
 
 const router = useRouter();
 const toast = useToast();
@@ -507,6 +538,8 @@ const form = ref({
   source: '' as string | null,
   assignedUserId: null as string | null,
   tags: [] as string[],
+  ratingCode: null as string | null,   // Đánh giá KH — MasterData TRANG_THAI_KH (P2 2026-11-15)
+  ratingNote: '' as string | null,     // Ghi chú đánh giá
 });
 const newTag = ref('');
 
@@ -523,6 +556,8 @@ function hydrateForm(ct: Contact) {
     source: ct.source || '',
     assignedUserId: ct.assignedUserId ?? ct.assignedUser?.id ?? null,
     tags: [...(ct.tags || [])],
+    ratingCode: ct.ratingCode ?? null,
+    ratingNote: ct.ratingNote ?? '',
   };
 }
 
@@ -530,6 +565,7 @@ function emptyForm() {
   form.value = {
     fullName: '', gender: null, birthYear: '', phone: '', extraPhones: [],
     email: '', occupation: '', addressLine: '', source: '', assignedUserId: null, tags: [],
+    ratingCode: null, ratingNote: '',
   };
 }
 
@@ -550,6 +586,8 @@ async function loadDetail() {
   }
   const id = props.contactId || props.contact?.id;
   if (!id) return;
+  // Load options đánh giá (best-effort, không chặn mở hồ sơ)
+  void fetchMasterItems('TRANG_THAI_KH').catch(() => {});
   loading.value = true;
   error.value = null;
   try {
@@ -697,6 +735,10 @@ async function save() {
     addressLine: form.value.addressLine,
     source: form.value.source,
     assignedUserId: form.value.assignedUserId,
+    // Đánh giá tay (P2 2026-11-15) — backend validate ratingCode theo MasterData TRANG_THAI_KH.
+    // Gửi '' (không phải null) khi bỏ chọn để backend tháo đánh giá thay vì giữ nguyên.
+    ratingCode: form.value.ratingCode ?? '',
+    ratingNote: form.value.ratingNote ?? '',
   };
 
   // ── Chế độ TẠO MỚI: POST /contacts ──
